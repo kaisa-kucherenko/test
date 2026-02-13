@@ -28,28 +28,26 @@
   #json-output { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px;
                  font-size: 11px; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all;
                  display: none; margin-top: 12px; }
-  .badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 8px; }
-  .badge-ok { background: #23883626; color: #7ee787; }
-  .badge-warn { background: #9e6a0326; color: #f0883e; }
-  .badge-fail { background: #f8514926; color: #f85149; }
 </style>
 </head>
 <body>
 <h1>BotGuard Fingerprint Checker</h1>
 <div class="controls">
-  <button onclick="runAll()">Run All Checks</button>
   <button onclick="copyJSON()">Copy JSON</button>
   <button onclick="saveJSON()">Save JSON</button>
   <button onclick="toggleRaw()">Show/Hide Raw JSON</button>
 </div>
 <div id="results"></div>
 <div id="json-output"></div>
+<!-- programmatic access: document.getElementById('fingerprint-json').textContent -->
+<div id="fingerprint-json" style="display:none"></div>
 
 <script>
 const fp = {};
 
-function safe(fn) { try { return fn(); } catch(e) { return `ERROR: ${e.message}`; } }
+function safe(fn) { try { return fn(); } catch(e) { return 'ERROR: ' + e.message; } }
 
+// ── 1. Navigator ──
 function collectNavigator() {
   const n = navigator;
   return {
@@ -70,6 +68,18 @@ function collectNavigator() {
   };
 }
 
+// ── 2. User-Agent Data ──
+function collectUserAgentData() {
+  const ua = navigator.userAgentData;
+  return {
+    'navigator.userAgentData exists': safe(() => !!ua),
+    'userAgentData.mobile': safe(() => ua?.mobile),
+    'userAgentData.platform': safe(() => ua?.platform),
+    'userAgentData.brands': safe(() => JSON.stringify(ua?.brands)),
+  };
+}
+
+// ── 3. Screen & Window ──
 function collectScreen() {
   return {
     'screen.width': safe(() => screen.width),
@@ -87,9 +97,11 @@ function collectScreen() {
     'window.devicePixelRatio': safe(() => window.devicePixelRatio),
     'window.screenX': safe(() => window.screenX),
     'window.screenY': safe(() => window.screenY),
+    'window.self === window': safe(() => window.self === window),
   };
 }
 
+// ── 4. Performance & Timing ──
 function collectPerformance() {
   const nav = performance.getEntriesByType('navigation')[0] || {};
   return {
@@ -107,6 +119,7 @@ function collectPerformance() {
   };
 }
 
+// ── 5. Connection / Network ──
 function collectConnection() {
   const c = navigator.connection;
   return {
@@ -118,13 +131,14 @@ function collectConnection() {
     'connection.type': safe(() => c?.type),
     'connection.constructor.name': safe(() => c?.constructor?.name),
     'connection instanceof NetworkInformation': safe(() => c instanceof NetworkInformation),
-    'Object.getOwnPropertyDescriptor(Navigator.prototype, "connection")': safe(() => {
+    'connection getter location': safe(() => {
       const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
-      return d ? `{get: ${typeof d.get}, configurable: ${d.configurable}}` : 'undefined';
+      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'connection') ? 'instance' : 'none');
     }),
   };
 }
 
+// ── 6. Chrome & History ──
 function collectChrome() {
   return {
     'window.chrome': safe(() => typeof window.chrome),
@@ -134,20 +148,24 @@ function collectChrome() {
     'chrome.csi()': safe(() => JSON.stringify(window.chrome?.csi?.())),
     'history.length': safe(() => history.length),
     'window.isSecureContext': safe(() => window.isSecureContext),
+    'window.trustedTypes': safe(() => typeof window.trustedTypes),
+    'trustedTypes.emptyHTML': safe(() => typeof window.trustedTypes?.emptyHTML),
   };
 }
 
+// ── 7. Automation Markers ──
 function collectAutomation() {
   return {
     'navigator.webdriver': safe(() => navigator.webdriver),
-    'Navigator.prototype.webdriver descriptor': safe(() => {
+    'Navigator.prototype webdriver getter': safe(() => {
       const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver');
-      return d ? `{get: ${typeof d.get}, configurable: ${d.configurable}}` : 'undefined';
+      return d ? '{get: ' + typeof d.get + ', configurable: ' + d.configurable + '}' : 'undefined';
     }),
     'window.webdriver': safe(() => window.webdriver),
     'document.__webdriver_script_fn': safe(() => document.__webdriver_script_fn),
     'document.$cdc_asdjflasutopfhvcZLmcfl_': safe(() => document.$cdc_asdjflasutopfhvcZLmcfl_),
     'document.$wdc_': safe(() => document.$wdc_),
+    'documentElement.hasAttribute("webdriver")': safe(() => document.documentElement.hasAttribute('webdriver')),
     'window.domAutomationController': safe(() => window.domAutomationController),
     'window.callPhantom': safe(() => window.callPhantom),
     'window.boundObject': safe(() => window.boundObject),
@@ -164,6 +182,63 @@ function collectAutomation() {
   };
 }
 
+// ── 8. Click Trust Test ──
+// BotGuard: createElement("a") → onclick=None → click() → PointerEvent.isTrusted
+function collectClickTrust() {
+  return new Promise(resolve => {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.style.position = 'fixed'; a.style.left = '-9999px';
+    document.body.appendChild(a);
+    let trusted = null;
+    a.onclick = (e) => { trusted = e.isTrusted; e.preventDefault(); };
+    a.click();
+    document.body.removeChild(a);
+    resolve({ 'PointerEvent.isTrusted (programmatic click)': trusted });
+  });
+}
+
+// ── 9. Permissions.query ──
+// BotGuard: CALL Permissions.query({name:"notifications"}) every request
+async function collectPermissions() {
+  const result = {
+    'typeof Permissions': safe(() => typeof Permissions),
+    'typeof Permissions.prototype.query': safe(() => typeof Permissions.prototype?.query),
+  };
+  try {
+    const status = await navigator.permissions.query({name: 'notifications'});
+    result['Permissions.query({name:"notifications"})'] = status.state;
+  } catch(e) {
+    result['Permissions.query({name:"notifications"})'] = 'ERROR: ' + e.message;
+  }
+  return result;
+}
+
+// ── 10. iframe srcdoc cross-origin test ──
+// BotGuard: createElement("iframe") → srcdoc → contentWindow → check chrome on child
+function collectIframeTest() {
+  return new Promise(resolve => {
+    const result = {};
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    if (window.trustedTypes?.emptyHTML !== undefined) {
+      iframe.srcdoc = window.trustedTypes.emptyHTML;
+    } else {
+      iframe.srcdoc = '';
+    }
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      result['iframe.contentWindow exists'] = safe(() => !!iframe.contentWindow);
+      result['iframe.contentWindow.chrome'] = safe(() => typeof iframe.contentWindow?.chrome);
+      result['iframe.contentWindow.navigator.webdriver'] = safe(() => iframe.contentWindow?.navigator?.webdriver);
+      result['iframe.contentWindow.navigator.plugins.length'] = safe(() => iframe.contentWindow?.navigator?.plugins?.length);
+      document.body.removeChild(iframe);
+      resolve(result);
+    }, 100);
+  });
+}
+
+// ── 11. toString() Integrity ──
 function collectToString() {
   return {
     'Function.prototype.toString.toString()': safe(() => Function.prototype.toString.toString()),
@@ -175,6 +250,10 @@ function collectToString() {
       const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'plugins');
       return d?.get?.toString();
     }),
+    'navigator.mimeTypes getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'mimeTypes');
+      return d?.get?.toString();
+    }),
     'navigator.connection getter toString': safe(() => {
       const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
       return d?.get?.toString();
@@ -183,9 +262,18 @@ function collectToString() {
       const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'hardwareConcurrency');
       return d?.get?.toString();
     }),
+    'screen.width getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Screen.prototype, 'width');
+      return d?.get?.toString();
+    }),
+    'performance.memory getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Performance.prototype, 'memory');
+      return d?.get?.toString();
+    }),
   };
 }
 
+// ── 12. Plugins & Codecs ──
 function collectMediaCodecs() {
   const v = document.createElement('video');
   return {
@@ -197,86 +285,138 @@ function collectMediaCodecs() {
   };
 }
 
-function collectUserAgentData() {
-  const ua = navigator.userAgentData;
+// ── 13. Prototype Integrity ──
+function collectPrototypeIntegrity() {
   return {
-    'navigator.userAgentData exists': safe(() => !!ua),
-    'userAgentData.mobile': safe(() => ua?.mobile),
-    'userAgentData.platform': safe(() => ua?.platform),
-    'userAgentData.brands': safe(() => JSON.stringify(ua?.brands)),
+    'navigator.plugins instanceof PluginArray': safe(() => navigator.plugins instanceof PluginArray),
+    'navigator.mimeTypes instanceof MimeTypeArray': safe(() => navigator.mimeTypes instanceof MimeTypeArray),
+    'navigator.connection instanceof NetworkInformation': safe(() => navigator.connection instanceof NetworkInformation),
+    'Object.keys(navigator.plugins)': safe(() => JSON.stringify(Object.keys(navigator.plugins))),
+    'plugins getter location': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'plugins');
+      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'plugins') ? 'instance' : 'none');
+    }),
+    'mimeTypes getter location': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'mimeTypes');
+      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'mimeTypes') ? 'instance' : 'none');
+    }),
+    'connection.type own?': safe(() => {
+      const c = navigator.connection;
+      return c ? Object.hasOwn(c, 'type') : 'no connection';
+    }),
+    'connection.rtt own?': safe(() => {
+      const c = navigator.connection;
+      return c ? Object.hasOwn(c, 'rtt') : 'no connection';
+    }),
+    'screen.width own?': safe(() => Object.hasOwn(screen, 'width')),
+    'memory own on performance?': safe(() => Object.hasOwn(performance, 'memory')),
   };
 }
 
-function collectPermissions() {
-  return {
-    'Permissions exists': safe(() => typeof Permissions !== 'undefined'),
-    'Permissions.query': safe(() => typeof Permissions.prototype?.query),
-  };
-}
-
-function collectClickTrust() {
-  return new Promise(resolve => {
-    const a = document.createElement('a');
-    a.href = '#';
-    a.style.position = 'fixed'; a.style.left = '-9999px';
-    document.body.appendChild(a);
-
-    let trusted = null;
-    a.onclick = (e) => { trusted = e.isTrusted; e.preventDefault(); };
-    a.click();
-
-    document.body.removeChild(a);
-    resolve({ 'PointerEvent.isTrusted (programmatic click)': trusted });
-  });
-}
-
+// ── 14. API Presence (BotGuard random sampling) ──
 function collectAPIPresence() {
   const apis = [
+    // WebGPU
     'GPU','GPUDevice','GPUBuffer','GPUSupportedLimits','GPURenderPassEncoder',
-    'GPUCanvasContext','GPUAdapter','GPUTexture','GPUError',
-    'WGSLLanguageFeatures',
-    'XRSystem','XRSession','XRFrame','XRCamera',
-    'XRTransientInputHitTestSource','XRRigidTransform',
-    'USB','USBDevice','Serial','SerialPort',
-    'Bluetooth','BluetoothDevice','BluetoothRemoteGATTCharacteristic','BluetoothRemoteGATTService',
-    'MIDIAccess','MIDIInput','MIDIOutput',
+    'GPUCanvasContext','GPUAdapter','GPUTexture','GPUError','GPUQueue',
+    'GPUCommandEncoder','GPUShaderModule','GPURenderPipeline','GPUComputePipeline',
+    'GPUBindGroup','GPUBindGroupLayout','GPUPipelineLayout','GPUTextureView',
+    'GPURenderBundle','GPURenderBundleEncoder','GPUComputePassEncoder',
+    'GPUCommandBuffer','GPUQuerySet','GPUExternalTexture','GPUAdapterInfo',
+    'GPUDeviceLostInfo','GPUCompilationInfo','GPUCompilationMessage',
+    'GPUPipelineError','GPUUncapturedErrorEvent','GPUBufferUsage',
+    'GPUSupportedFeatures','WGSLLanguageFeatures',
+    // WebXR
+    'XRSystem','XRSession','XRFrame','XRCamera','XRSpace','XRReferenceSpace',
+    'XRBoundedReferenceSpace','XRView','XRViewerPose','XRViewport','XRPose',
+    'XRRigidTransform','XRRenderState','XRInputSource','XRInputSourceArray',
+    'XRHand','XRJointSpace','XRJointPose','XRHitTestSource',
+    'XRTransientInputHitTestSource','XRTransientInputHitTestResult','XRRay',
+    'XRLayer','XRWebGLLayer','XRWebGLBinding','XRDepthInformation',
+    'XRWebGLDepthInformation','XRCPUDepthInformation','XRAnchorSet',
+    'XRLightProbe','XRLightEstimate','XRDOMOverlayState',
+    'XRSessionEvent','XRInputSourceEvent','XRInputSourcesChangeEvent',
+    'XRReferenceSpaceEvent','XRVisibilityMaskChangeEvent',
+    // USB
+    'USB','USBDevice','USBConnectionEvent','USBAlternateInterface',
+    'USBConfiguration','USBInterface','USBEndpoint','USBInTransferResult',
+    'USBOutTransferResult','USBIsochronousInTransferResult',
+    'USBIsochronousOutTransferResult','USBIsochronousInTransferPacket',
+    'USBIsochronousOutTransferPacket',
+    // Serial
+    'Serial','SerialPort',
+    // Bluetooth
+    'Bluetooth','BluetoothDevice','BluetoothRemoteGATTCharacteristic',
+    'BluetoothRemoteGATTService','BluetoothRemoteGATTServer',
+    'BluetoothRemoteGATTDescriptor','BluetoothCharacteristicProperties',
+    // MIDI
+    'MIDIAccess','MIDIInput','MIDIOutput','MIDIInputMap','MIDIOutputMap',
+    'MIDIPort','MIDIMessageEvent','MIDIConnectionEvent',
+    // Presentation
     'Presentation','PresentationRequest','PresentationConnection',
-    'PaymentRequest','PaymentAddress','PaymentManager','PaymentRequestUpdateEvent',
+    'PresentationReceiver','PresentationAvailability',
+    'PresentationConnectionList','PresentationConnectionAvailableEvent',
+    // Payment
+    'PaymentRequest','PaymentResponse','PaymentAddress','PaymentManager',
+    'PaymentMethodChangeEvent','PaymentRequestUpdateEvent',
+    // Credentials
     'Credential','CredentialsContainer','PublicKeyCredential',
     'FederatedCredential','IdentityCredential','DigitalCredential',
+    'AuthenticatorAssertionResponse','AuthenticatorAttestationResponse',
+    // ServiceWorker / Cache
     'ServiceWorker','ServiceWorkerRegistration','ServiceWorkerContainer',
-    'CacheStorage','Cache','SubtleCrypto','CryptoKey',
+    'NavigationPreloadManager','CacheStorage','Cache',
+    // Crypto
+    'SubtleCrypto','CryptoKey',
+    // Clipboard
     'Clipboard','ClipboardItem','ClipboardChangeEvent',
-    'LockManager','Lock','StorageManager',
+    // Locks / Storage
+    'LockManager','Lock','StorageManager','StorageBucket','StorageBucketManager',
+    // Media
     'MediaDevices','MediaDeviceInfo',
-    'BarcodeDetector','ImageCapture','IdleDetector',
+    'AudioWorklet','AudioEncoder','AudioDecoder',
+    'VideoEncoder','VideoDecoder','ImageDecoder','ImageTrack','ImageTrackList',
+    'MediaKeys','MediaKeySession','MediaKeySystemAccess','MediaKeyStatusMap',
+    'ImageCapture','BarcodeDetector','IdleDetector','Worklet',
+    // FileSystem
     'FileSystemHandle','FileSystemFileHandle','FileSystemDirectoryHandle',
-    'WebTransport','WebTransportError',
+    'FileSystemWritableFileStream','FileSystemObserver',
+    // WebTransport
+    'WebTransport','WebTransportError','WebTransportDatagramDuplexStream',
+    'WebTransportBidirectionalStream',
+    // CookieStore
     'CookieStore','CookieStoreManager','CookieChangeEvent',
+    // Wake Lock / Pressure
     'WakeLockSentinel','PressureObserver','PressureRecord',
+    // Sensors
     'Sensor','SensorErrorEvent','Gyroscope','GravitySensor',
     'AbsoluteOrientationSensor','LinearAccelerationSensor','OrientationSensor',
+    // Battery / Motion
     'BatteryManager','DeviceMotionEvent','DeviceOrientationEvent',
     'DeviceMotionEventAcceleration',
+    // NFC
     'NDEFRecord','NDEFMessage','NDEFReadingEvent',
+    // Touch / Input
     'Touch','TouchList','ContactsManager','VirtualKeyboard',
     'Keyboard','KeyboardLayoutMap',
+    // Screen / Desktop
     'EyeDropper','ScreenDetails','ScreenDetailed',
+    // HID
     'HIDInputReportEvent',
-    'AudioWorklet','AudioEncoder','AudioDecoder',
-    'VideoEncoder','VideoDecoder','ImageDecoder',
-    'MediaKeys','MediaKeySession','MediaKeySystemAccess','MediaKeyStatusMap',
-    'Worklet','Notification','OffscreenCanvas',
-    'SpeechRecognition','SpeechSynthesisVoice',
-    'RTCPeerConnection','RTCDataChannel',
+    // Misc from V8 logs
+    'Notification','OffscreenCanvas',
+    'SpeechRecognition','SpeechSynthesisVoice','SpeechSynthesisEvent',
+    'RTCPeerConnection','RTCDataChannel','RTCIceTransport',
     'WebGL2RenderingContext','WebGLRenderingContext',
     'PerfTestReturnValue','Summarizer','NavigatorManagedData',
     'ProtectedAudience','FetchLaterResult','ContentIndex',
+    'CaptureController','CreateMonitor',
   ];
   const result = {};
   apis.forEach(name => {
     result[name] = safe(() => typeof window[name] !== 'undefined');
   });
+  // navigator.* entry points
   result['navigator.gpu'] = safe(() => 'gpu' in navigator);
   result['navigator.xr'] = safe(() => 'xr' in navigator);
   result['navigator.usb'] = safe(() => 'usb' in navigator);
@@ -292,7 +432,7 @@ function collectAPIPresence() {
   result['navigator.wakeLock'] = safe(() => 'wakeLock' in navigator);
   result['navigator.keyboard'] = safe(() => 'keyboard' in navigator);
   result['navigator.hid'] = safe(() => 'hid' in navigator);
-  result['navigator.midi (requestMIDIAccess)'] = safe(() => typeof navigator.requestMIDIAccess === 'function');
+  result['navigator.requestMIDIAccess'] = safe(() => typeof navigator.requestMIDIAccess === 'function');
   result['navigator.getBattery'] = safe(() => typeof navigator.getBattery === 'function');
   result['navigator.contacts'] = safe(() => 'contacts' in navigator);
   result['navigator.virtualKeyboard'] = safe(() => 'virtualKeyboard' in navigator);
@@ -305,44 +445,17 @@ function collectAPIPresence() {
   return result;
 }
 
-function collectPrototypeIntegrity() {
-  return {
-    'navigator.plugins instanceof PluginArray': safe(() => navigator.plugins instanceof PluginArray),
-    'navigator.mimeTypes instanceof MimeTypeArray': safe(() => navigator.mimeTypes instanceof MimeTypeArray),
-    'navigator.connection instanceof NetworkInformation': safe(() => navigator.connection instanceof NetworkInformation),
-    'Object.keys(navigator.plugins)': safe(() => JSON.stringify(Object.keys(navigator.plugins))),
-    'plugins getter on Navigator.prototype': safe(() => {
-      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'plugins');
-      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'plugins') ? 'instance' : 'none');
-    }),
-    'connection getter on Navigator.prototype': safe(() => {
-      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
-      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'connection') ? 'instance' : 'none');
-    }),
-    'connection.type own?': safe(() => {
-      const c = navigator.connection;
-      return c ? Object.hasOwn(c, 'type') : 'no connection';
-    }),
-    'connection.rtt own?': safe(() => {
-      const c = navigator.connection;
-      return c ? Object.hasOwn(c, 'rtt') : 'no connection';
-    }),
-  };
-}
-
+// ── Render ──
 function renderSection(title, data, container) {
   const section = document.createElement('div');
   section.className = 'section';
-
   const count = Object.keys(data).length;
   const header = document.createElement('div');
   header.className = 'section-header';
-  header.innerHTML = `${title} <span style="color:#8b949e">${count} checks</span>`;
-  header.onclick = () => body.style.display = body.style.display === 'none' ? '' : 'none';
-
+  header.innerHTML = title + ' <span style="color:#8b949e">' + count + ' checks</span>';
+  header.onclick = function() { body.style.display = body.style.display === 'none' ? '' : 'none'; };
   const body = document.createElement('div');
   body.className = 'section-body';
-
   for (const [k, v] of Object.entries(data)) {
     const row = document.createElement('div');
     row.className = 'row';
@@ -350,20 +463,25 @@ function renderSection(title, data, container) {
     let cls = 'val';
     if (v === false || v === undefined || v === null || (typeof v === 'string' && v.startsWith('ERROR'))) cls += ' fail';
     else if (v === true) cls += ' ok';
-    row.innerHTML = `<span class="key">${k}</span><span class="${cls}">${valStr}</span>`;
+    row.innerHTML = '<span class="key">' + k + '</span><span class="' + cls + '">' + valStr + '</span>';
     body.appendChild(row);
   }
-
   section.appendChild(header);
   section.appendChild(body);
   container.appendChild(section);
 }
 
+// ── Main ──
 async function runAll() {
   const container = document.getElementById('results');
   container.innerHTML = '';
 
-  const clickTrust = await collectClickTrust();
+  // async collectors
+  const [clickTrust, permissions, iframeTest] = await Promise.all([
+    collectClickTrust(),
+    collectPermissions(),
+    collectIframeTest(),
+  ]);
 
   const sections = [
     ['Navigator', collectNavigator()],
@@ -374,12 +492,15 @@ async function runAll() {
     ['Chrome & History', collectChrome()],
     ['Automation Markers', collectAutomation()],
     ['Click Trust Test', clickTrust],
+    ['Permissions', permissions],
+    ['iframe Cross-Origin Test', iframeTest],
     ['toString() Integrity', collectToString()],
     ['Plugins & Codecs', collectMediaCodecs()],
     ['Prototype Integrity', collectPrototypeIntegrity()],
     ['API Presence (BotGuard sampling)', collectAPIPresence()],
   ];
 
+  // reset fp
   Object.keys(fp).forEach(k => delete fp[k]);
 
   for (const [title, data] of sections) {
@@ -391,12 +512,14 @@ async function runAll() {
   fp._url = location.href;
   fp._userAgent = navigator.userAgent;
 
+  // fill both outputs
   document.getElementById('json-output').textContent = JSON.stringify(fp, null, 2);
+  document.getElementById('fingerprint-json').textContent = JSON.stringify(fp);
 }
 
 function copyJSON() {
   const text = JSON.stringify(fp, null, 2);
-  navigator.clipboard.writeText(text).then(() => alert('Copied!')).catch(() => {
+  navigator.clipboard.writeText(text).then(function() { alert('Copied!'); }).catch(function() {
     const ta = document.createElement('textarea');
     ta.value = text; document.body.appendChild(ta); ta.select();
     document.execCommand('copy'); document.body.removeChild(ta);
@@ -408,7 +531,7 @@ function saveJSON() {
   const blob = new Blob([JSON.stringify(fp, null, 2)], {type: 'application/json'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `fingerprint_${Date.now()}.json`;
+  a.download = 'fingerprint_' + Date.now() + '.json';
   a.click();
 }
 
@@ -417,17 +540,8 @@ function toggleRaw() {
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
 }
 
-// Auto-run
+// auto-run on page load
 runAll();
-</script>
-
-<div id="fingerprint-json" style="display:none"></div>
-<script>
-  // Keep #fingerprint-json updated for programmatic access
-  const observer = new MutationObserver(() => {
-    document.getElementById('fingerprint-json').textContent = JSON.stringify(fp);
-  });
-  observer.observe(document.getElementById('results'), {childList: true, subtree: true});
 </script>
 </body>
 </html>
