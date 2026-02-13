@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BotGuard Fingerprint Checker</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono', 'Fira Code', monospace; background: #0d1117; color: #c9d1d9; padding: 16px; }
+  h1 { font-size: 18px; color: #58a6ff; margin-bottom: 12px; }
+  .controls { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  button { background: #21262d; color: #c9d1d9; border: 1px solid #30363d; border-radius: 6px;
+           padding: 8px 16px; cursor: pointer; font-family: inherit; font-size: 13px; }
+  button:hover { background: #30363d; border-color: #58a6ff; }
+  button:active { background: #388bfd26; }
+  .section { margin-bottom: 16px; border: 1px solid #21262d; border-radius: 8px; overflow: hidden; }
+  .section-header { background: #161b22; padding: 10px 14px; font-size: 14px; font-weight: 600;
+                    color: #58a6ff; cursor: pointer; display: flex; justify-content: space-between; }
+  .section-header:hover { background: #1c2128; }
+  .section-body { padding: 8px 14px; }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #21262d14; font-size: 12px; }
+  .row:last-child { border-bottom: none; }
+  .key { color: #8b949e; min-width: 280px; }
+  .val { color: #7ee787; text-align: right; word-break: break-all; max-width: 60%; }
+  .val.warn { color: #f0883e; }
+  .val.fail { color: #f85149; }
+  .val.ok { color: #7ee787; }
+  #json-output { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 14px;
+                 font-size: 11px; max-height: 400px; overflow: auto; white-space: pre-wrap; word-break: break-all;
+                 display: none; margin-top: 12px; }
+  .badge { font-size: 10px; padding: 2px 6px; border-radius: 10px; margin-left: 8px; }
+  .badge-ok { background: #23883626; color: #7ee787; }
+  .badge-warn { background: #9e6a0326; color: #f0883e; }
+  .badge-fail { background: #f8514926; color: #f85149; }
+</style>
+</head>
+<body>
+<h1>BotGuard Fingerprint Checker</h1>
+<div class="controls">
+  <button onclick="runAll()">Run All Checks</button>
+  <button onclick="copyJSON()">Copy JSON</button>
+  <button onclick="saveJSON()">Save JSON</button>
+  <button onclick="toggleRaw()">Show/Hide Raw JSON</button>
+</div>
+<div id="results"></div>
+<div id="json-output"></div>
+
+<script>
+const fp = {};
+
+function safe(fn) { try { return fn(); } catch(e) { return `ERROR: ${e.message}`; } }
+
+function collectNavigator() {
+  const n = navigator;
+  return {
+    'navigator.webdriver': safe(() => n.webdriver),
+    'navigator.hardwareConcurrency': safe(() => n.hardwareConcurrency),
+    'navigator.maxTouchPoints': safe(() => n.maxTouchPoints),
+    'navigator.deviceMemory': safe(() => n.deviceMemory),
+    'navigator.languages': safe(() => JSON.stringify(n.languages)),
+    'navigator.userAgent': safe(() => n.userAgent),
+    'navigator.platform': safe(() => n.platform),
+    'navigator.vendor': safe(() => n.vendor),
+    'navigator.language': safe(() => n.language),
+    'navigator.cookieEnabled': safe(() => n.cookieEnabled),
+    'navigator.pdfViewerEnabled': safe(() => n.pdfViewerEnabled),
+    'navigator.plugins.length': safe(() => n.plugins.length),
+    'navigator.mimeTypes.length': safe(() => n.mimeTypes.length),
+    'navigator.plugins[0]?.name': safe(() => n.plugins[0]?.name),
+  };
+}
+
+function collectScreen() {
+  return {
+    'screen.width': safe(() => screen.width),
+    'screen.height': safe(() => screen.height),
+    'screen.availWidth': safe(() => screen.availWidth),
+    'screen.availHeight': safe(() => screen.availHeight),
+    'screen.availLeft': safe(() => screen.availLeft),
+    'screen.availTop': safe(() => screen.availTop),
+    'screen.colorDepth': safe(() => screen.colorDepth),
+    'screen.pixelDepth': safe(() => screen.pixelDepth),
+    'window.outerWidth': safe(() => window.outerWidth),
+    'window.outerHeight': safe(() => window.outerHeight),
+    'window.innerWidth': safe(() => window.innerWidth),
+    'window.innerHeight': safe(() => window.innerHeight),
+    'window.devicePixelRatio': safe(() => window.devicePixelRatio),
+    'window.screenX': safe(() => window.screenX),
+    'window.screenY': safe(() => window.screenY),
+  };
+}
+
+function collectPerformance() {
+  const nav = performance.getEntriesByType('navigation')[0] || {};
+  return {
+    'performance.memory.jsHeapSizeLimit': safe(() => performance.memory?.jsHeapSizeLimit),
+    'performance.memory.totalJSHeapSize': safe(() => performance.memory?.totalJSHeapSize),
+    'performance.memory.usedJSHeapSize': safe(() => performance.memory?.usedJSHeapSize),
+    'navTiming.responseStart': safe(() => nav.responseStart),
+    'navTiming.requestStart': safe(() => nav.requestStart),
+    'navTiming.connectEnd': safe(() => nav.connectEnd),
+    'navTiming.connectStart': safe(() => nav.connectStart),
+    'navTiming.domainLookupEnd': safe(() => nav.domainLookupEnd),
+    'navTiming.domainLookupStart': safe(() => nav.domainLookupStart),
+    'navTiming.fetchStart': safe(() => nav.fetchStart),
+    'navTiming.responseEnd': safe(() => nav.responseEnd),
+  };
+}
+
+function collectConnection() {
+  const c = navigator.connection;
+  return {
+    'navigator.connection exists': safe(() => !!c),
+    'connection.effectiveType': safe(() => c?.effectiveType),
+    'connection.rtt': safe(() => c?.rtt),
+    'connection.downlink': safe(() => c?.downlink),
+    'connection.saveData': safe(() => c?.saveData),
+    'connection.type': safe(() => c?.type),
+    'connection.constructor.name': safe(() => c?.constructor?.name),
+    'connection instanceof NetworkInformation': safe(() => c instanceof NetworkInformation),
+    'Object.getOwnPropertyDescriptor(Navigator.prototype, "connection")': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
+      return d ? `{get: ${typeof d.get}, configurable: ${d.configurable}}` : 'undefined';
+    }),
+  };
+}
+
+function collectChrome() {
+  return {
+    'window.chrome': safe(() => typeof window.chrome),
+    'window.chrome.csi': safe(() => typeof window.chrome?.csi),
+    'window.chrome.loadTimes': safe(() => typeof window.chrome?.loadTimes),
+    'window.chrome.runtime': safe(() => typeof window.chrome?.runtime),
+    'chrome.csi()': safe(() => JSON.stringify(window.chrome?.csi?.())),
+    'history.length': safe(() => history.length),
+    'window.isSecureContext': safe(() => window.isSecureContext),
+  };
+}
+
+function collectAutomation() {
+  return {
+    'navigator.webdriver': safe(() => navigator.webdriver),
+    'Navigator.prototype.webdriver descriptor': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver');
+      return d ? `{get: ${typeof d.get}, configurable: ${d.configurable}}` : 'undefined';
+    }),
+    'window.webdriver': safe(() => window.webdriver),
+    'document.__webdriver_script_fn': safe(() => document.__webdriver_script_fn),
+    'document.$cdc_asdjflasutopfhvcZLmcfl_': safe(() => document.$cdc_asdjflasutopfhvcZLmcfl_),
+    'document.$wdc_': safe(() => document.$wdc_),
+    'window.domAutomationController': safe(() => window.domAutomationController),
+    'window.callPhantom': safe(() => window.callPhantom),
+    'window.boundObject': safe(() => window.boundObject),
+    'window.cefsharp_CreatePromise': safe(() => window.cefsharp_CreatePromise),
+    'window.__nightmare': safe(() => window.__nightmare),
+    'window.Cypress': safe(() => window.Cypress),
+    'window.awesomium': safe(() => window.awesomium),
+    'window.____LocationIntercept': safe(() => window.____LocationIntercept),
+    'window.windmill': safe(() => window.windmill),
+    'window.ubot': safe(() => window.ubot),
+    'window.__playwright__binding__': safe(() => window.__playwright__binding__),
+    'window.__pwInitScripts': safe(() => window.__pwInitScripts),
+    'window.opener': safe(() => window.opener),
+  };
+}
+
+function collectToString() {
+  return {
+    'Function.prototype.toString.toString()': safe(() => Function.prototype.toString.toString()),
+    'navigator.webdriver getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'webdriver');
+      return d?.get?.toString();
+    }),
+    'navigator.plugins getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'plugins');
+      return d?.get?.toString();
+    }),
+    'navigator.connection getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
+      return d?.get?.toString();
+    }),
+    'navigator.hardwareConcurrency getter toString': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'hardwareConcurrency');
+      return d?.get?.toString();
+    }),
+  };
+}
+
+function collectMediaCodecs() {
+  const v = document.createElement('video');
+  return {
+    'canPlayType("audio/x-m4a")': safe(() => v.canPlayType('audio/x-m4a')),
+    'canPlayType("video/mp4")': safe(() => v.canPlayType('video/mp4')),
+    'canPlayType("video/webm")': safe(() => v.canPlayType('video/webm')),
+    'canPlayType("audio/mpeg")': safe(() => v.canPlayType('audio/mpeg')),
+    'canPlayType("audio/ogg")': safe(() => v.canPlayType('audio/ogg')),
+  };
+}
+
+function collectUserAgentData() {
+  const ua = navigator.userAgentData;
+  return {
+    'navigator.userAgentData exists': safe(() => !!ua),
+    'userAgentData.mobile': safe(() => ua?.mobile),
+    'userAgentData.platform': safe(() => ua?.platform),
+    'userAgentData.brands': safe(() => JSON.stringify(ua?.brands)),
+  };
+}
+
+function collectPermissions() {
+  return {
+    'Permissions exists': safe(() => typeof Permissions !== 'undefined'),
+    'Permissions.query': safe(() => typeof Permissions.prototype?.query),
+  };
+}
+
+function collectClickTrust() {
+  return new Promise(resolve => {
+    const a = document.createElement('a');
+    a.href = '#';
+    a.style.position = 'fixed'; a.style.left = '-9999px';
+    document.body.appendChild(a);
+
+    let trusted = null;
+    a.onclick = (e) => { trusted = e.isTrusted; e.preventDefault(); };
+    a.click();
+
+    document.body.removeChild(a);
+    resolve({ 'PointerEvent.isTrusted (programmatic click)': trusted });
+  });
+}
+
+function collectAPIPresence() {
+  const apis = [
+    'GPU','GPUDevice','GPUBuffer','GPUSupportedLimits','GPURenderPassEncoder',
+    'GPUCanvasContext','GPUAdapter','GPUTexture','GPUError',
+    'WGSLLanguageFeatures',
+    'XRSystem','XRSession','XRFrame','XRCamera',
+    'XRTransientInputHitTestSource','XRRigidTransform',
+    'USB','USBDevice','Serial','SerialPort',
+    'Bluetooth','BluetoothDevice','BluetoothRemoteGATTCharacteristic','BluetoothRemoteGATTService',
+    'MIDIAccess','MIDIInput','MIDIOutput',
+    'Presentation','PresentationRequest','PresentationConnection',
+    'PaymentRequest','PaymentAddress','PaymentManager','PaymentRequestUpdateEvent',
+    'Credential','CredentialsContainer','PublicKeyCredential',
+    'FederatedCredential','IdentityCredential','DigitalCredential',
+    'ServiceWorker','ServiceWorkerRegistration','ServiceWorkerContainer',
+    'CacheStorage','Cache','SubtleCrypto','CryptoKey',
+    'Clipboard','ClipboardItem','ClipboardChangeEvent',
+    'LockManager','Lock','StorageManager',
+    'MediaDevices','MediaDeviceInfo',
+    'BarcodeDetector','ImageCapture','IdleDetector',
+    'FileSystemHandle','FileSystemFileHandle','FileSystemDirectoryHandle',
+    'WebTransport','WebTransportError',
+    'CookieStore','CookieStoreManager','CookieChangeEvent',
+    'WakeLockSentinel','PressureObserver','PressureRecord',
+    'Sensor','SensorErrorEvent','Gyroscope','GravitySensor',
+    'AbsoluteOrientationSensor','LinearAccelerationSensor','OrientationSensor',
+    'BatteryManager','DeviceMotionEvent','DeviceOrientationEvent',
+    'DeviceMotionEventAcceleration',
+    'NDEFRecord','NDEFMessage','NDEFReadingEvent',
+    'Touch','TouchList','ContactsManager','VirtualKeyboard',
+    'Keyboard','KeyboardLayoutMap',
+    'EyeDropper','ScreenDetails','ScreenDetailed',
+    'HIDInputReportEvent',
+    'AudioWorklet','AudioEncoder','AudioDecoder',
+    'VideoEncoder','VideoDecoder','ImageDecoder',
+    'MediaKeys','MediaKeySession','MediaKeySystemAccess','MediaKeyStatusMap',
+    'Worklet','Notification','OffscreenCanvas',
+    'SpeechRecognition','SpeechSynthesisVoice',
+    'RTCPeerConnection','RTCDataChannel',
+    'WebGL2RenderingContext','WebGLRenderingContext',
+    'PerfTestReturnValue','Summarizer','NavigatorManagedData',
+    'ProtectedAudience','FetchLaterResult','ContentIndex',
+  ];
+  const result = {};
+  apis.forEach(name => {
+    result[name] = safe(() => typeof window[name] !== 'undefined');
+  });
+  result['navigator.gpu'] = safe(() => 'gpu' in navigator);
+  result['navigator.xr'] = safe(() => 'xr' in navigator);
+  result['navigator.usb'] = safe(() => 'usb' in navigator);
+  result['navigator.serial'] = safe(() => 'serial' in navigator);
+  result['navigator.bluetooth'] = safe(() => 'bluetooth' in navigator);
+  result['navigator.credentials'] = safe(() => 'credentials' in navigator);
+  result['navigator.clipboard'] = safe(() => 'clipboard' in navigator);
+  result['navigator.locks'] = safe(() => 'locks' in navigator);
+  result['navigator.storage'] = safe(() => 'storage' in navigator);
+  result['navigator.mediaDevices'] = safe(() => 'mediaDevices' in navigator);
+  result['navigator.serviceWorker'] = safe(() => 'serviceWorker' in navigator);
+  result['navigator.presentation'] = safe(() => 'presentation' in navigator);
+  result['navigator.wakeLock'] = safe(() => 'wakeLock' in navigator);
+  result['navigator.keyboard'] = safe(() => 'keyboard' in navigator);
+  result['navigator.hid'] = safe(() => 'hid' in navigator);
+  result['navigator.midi (requestMIDIAccess)'] = safe(() => typeof navigator.requestMIDIAccess === 'function');
+  result['navigator.getBattery'] = safe(() => typeof navigator.getBattery === 'function');
+  result['navigator.contacts'] = safe(() => 'contacts' in navigator);
+  result['navigator.virtualKeyboard'] = safe(() => 'virtualKeyboard' in navigator);
+  result['window.showOpenFilePicker'] = safe(() => typeof showOpenFilePicker === 'function');
+  result['window.showSaveFilePicker'] = safe(() => typeof showSaveFilePicker === 'function');
+  result['window.showDirectoryPicker'] = safe(() => typeof showDirectoryPicker === 'function');
+  result['window.cookieStore'] = safe(() => typeof cookieStore !== 'undefined');
+  result['window.ontouchstart'] = safe(() => 'ontouchstart' in window);
+  result['window.ondevicemotion'] = safe(() => 'ondevicemotion' in window);
+  return result;
+}
+
+function collectPrototypeIntegrity() {
+  return {
+    'navigator.plugins instanceof PluginArray': safe(() => navigator.plugins instanceof PluginArray),
+    'navigator.mimeTypes instanceof MimeTypeArray': safe(() => navigator.mimeTypes instanceof MimeTypeArray),
+    'navigator.connection instanceof NetworkInformation': safe(() => navigator.connection instanceof NetworkInformation),
+    'Object.keys(navigator.plugins)': safe(() => JSON.stringify(Object.keys(navigator.plugins))),
+    'plugins getter on Navigator.prototype': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'plugins');
+      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'plugins') ? 'instance' : 'none');
+    }),
+    'connection getter on Navigator.prototype': safe(() => {
+      const d = Object.getOwnPropertyDescriptor(Navigator.prototype, 'connection');
+      return d ? 'prototype' : (Object.getOwnPropertyDescriptor(navigator, 'connection') ? 'instance' : 'none');
+    }),
+    'connection.type own?': safe(() => {
+      const c = navigator.connection;
+      return c ? Object.hasOwn(c, 'type') : 'no connection';
+    }),
+    'connection.rtt own?': safe(() => {
+      const c = navigator.connection;
+      return c ? Object.hasOwn(c, 'rtt') : 'no connection';
+    }),
+  };
+}
+
+function renderSection(title, data, container) {
+  const section = document.createElement('div');
+  section.className = 'section';
+
+  const count = Object.keys(data).length;
+  const header = document.createElement('div');
+  header.className = 'section-header';
+  header.innerHTML = `${title} <span style="color:#8b949e">${count} checks</span>`;
+  header.onclick = () => body.style.display = body.style.display === 'none' ? '' : 'none';
+
+  const body = document.createElement('div');
+  body.className = 'section-body';
+
+  for (const [k, v] of Object.entries(data)) {
+    const row = document.createElement('div');
+    row.className = 'row';
+    const valStr = v === undefined ? 'undefined' : v === null ? 'null' : String(v);
+    let cls = 'val';
+    if (v === false || v === undefined || v === null || (typeof v === 'string' && v.startsWith('ERROR'))) cls += ' fail';
+    else if (v === true) cls += ' ok';
+    row.innerHTML = `<span class="key">${k}</span><span class="${cls}">${valStr}</span>`;
+    body.appendChild(row);
+  }
+
+  section.appendChild(header);
+  section.appendChild(body);
+  container.appendChild(section);
+}
+
+async function runAll() {
+  const container = document.getElementById('results');
+  container.innerHTML = '';
+
+  const clickTrust = await collectClickTrust();
+
+  const sections = [
+    ['Navigator', collectNavigator()],
+    ['User-Agent Data', collectUserAgentData()],
+    ['Screen & Window', collectScreen()],
+    ['Performance & Timing', collectPerformance()],
+    ['Connection / Network', collectConnection()],
+    ['Chrome & History', collectChrome()],
+    ['Automation Markers', collectAutomation()],
+    ['Click Trust Test', clickTrust],
+    ['toString() Integrity', collectToString()],
+    ['Plugins & Codecs', collectMediaCodecs()],
+    ['Prototype Integrity', collectPrototypeIntegrity()],
+    ['API Presence (BotGuard sampling)', collectAPIPresence()],
+  ];
+
+  Object.keys(fp).forEach(k => delete fp[k]);
+
+  for (const [title, data] of sections) {
+    renderSection(title, data, container);
+    Object.assign(fp, data);
+  }
+
+  fp._timestamp = new Date().toISOString();
+  fp._url = location.href;
+  fp._userAgent = navigator.userAgent;
+
+  document.getElementById('json-output').textContent = JSON.stringify(fp, null, 2);
+}
+
+function copyJSON() {
+  const text = JSON.stringify(fp, null, 2);
+  navigator.clipboard.writeText(text).then(() => alert('Copied!')).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    document.execCommand('copy'); document.body.removeChild(ta);
+    alert('Copied!');
+  });
+}
+
+function saveJSON() {
+  const blob = new Blob([JSON.stringify(fp, null, 2)], {type: 'application/json'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `fingerprint_${Date.now()}.json`;
+  a.click();
+}
+
+function toggleRaw() {
+  const el = document.getElementById('json-output');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+// Auto-run
+runAll();
+</script>
+
+<div id="fingerprint-json" style="display:none"></div>
+<script>
+  // Keep #fingerprint-json updated for programmatic access
+  const observer = new MutationObserver(() => {
+    document.getElementById('fingerprint-json').textContent = JSON.stringify(fp);
+  });
+  observer.observe(document.getElementById('results'), {childList: true, subtree: true});
+</script>
+</body>
+</html>
