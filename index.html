@@ -65,6 +65,17 @@ function collectNavigator() {
     'navigator.plugins.length': safe(() => n.plugins.length),
     'navigator.mimeTypes.length': safe(() => n.mimeTypes.length),
     'navigator.plugins[0]?.name': safe(() => n.plugins[0]?.name),
+    'navigator.appCodeName': safe(() => n.appCodeName),
+    'navigator.appName': safe(() => n.appName),
+    'navigator.appVersion': safe(() => n.appVersion),
+    'navigator.product': safe(() => n.product),
+    'navigator.productSub': safe(() => n.productSub),
+    'navigator.onLine': safe(() => n.onLine),
+    'navigator.doNotTrack': safe(() => n.doNotTrack),
+    'navigator.sendBeacon': safe(() => typeof n.sendBeacon),
+    'navigator.ink': safe(() => typeof n.ink),
+    'navigator.webkitTemporaryStorage': safe(() => typeof n.webkitTemporaryStorage),
+    'navigator.updateAdInterestGroups': safe(() => typeof n.updateAdInterestGroups),
   };
 }
 
@@ -77,6 +88,32 @@ function collectUserAgentData() {
     'userAgentData.platform': safe(() => ua?.platform),
     'userAgentData.brands': safe(() => JSON.stringify(ua?.brands)),
   };
+}
+
+// ── 2b. UA High Entropy (async) ──
+async function collectUAHighEntropy() {
+  const result = {};
+  try {
+    const ua = navigator.userAgentData;
+    if (!ua?.getHighEntropyValues) {
+      result['getHighEntropyValues'] = 'not available';
+      return result;
+    }
+    const he = await ua.getHighEntropyValues([
+      'architecture', 'bitness', 'model', 'platformVersion',
+      'uaFullVersion', 'fullVersionList', 'wow64',
+    ]);
+    result['highEntropy.architecture'] = he.architecture;
+    result['highEntropy.bitness'] = he.bitness;
+    result['highEntropy.model'] = he.model;
+    result['highEntropy.platformVersion'] = he.platformVersion;
+    result['highEntropy.uaFullVersion'] = he.uaFullVersion;
+    result['highEntropy.wow64'] = he.wow64;
+    result['highEntropy.fullVersionList'] = JSON.stringify(he.fullVersionList);
+  } catch(e) {
+    result['highEntropy.error'] = e.message;
+  }
+  return result;
 }
 
 // ── 3. Screen & Window ──
@@ -98,6 +135,8 @@ function collectScreen() {
     'window.screenX': safe(() => window.screenX),
     'window.screenY': safe(() => window.screenY),
     'window.self === window': safe(() => window.self === window),
+    'screen.orientation.type': safe(() => screen.orientation?.type),
+    'screen.orientation.angle': safe(() => screen.orientation?.angle),
   };
 }
 
@@ -116,6 +155,9 @@ function collectPerformance() {
     'navTiming.domainLookupStart': safe(() => nav.domainLookupStart),
     'navTiming.fetchStart': safe(() => nav.fetchStart),
     'navTiming.responseEnd': safe(() => nav.responseEnd),
+    'performance.timeOrigin': safe(() => performance.timeOrigin),
+    'navTiming.type': safe(() => nav.type),
+    'navTiming.redirectCount': safe(() => nav.redirectCount),
   };
 }
 
@@ -313,10 +355,10 @@ function collectPrototypeIntegrity() {
   };
 }
 
-// ── 14. API Presence (BotGuard random sampling) ──
+// ── 14. API Presence (BotGuard random sampling — complete 331+ class pool) ──
 function collectAPIPresence() {
   const apis = [
-    // WebGPU
+    // ── WebGPU ──
     'GPU','GPUDevice','GPUBuffer','GPUSupportedLimits','GPURenderPassEncoder',
     'GPUCanvasContext','GPUAdapter','GPUTexture','GPUError','GPUQueue',
     'GPUCommandEncoder','GPUShaderModule','GPURenderPipeline','GPUComputePipeline',
@@ -326,7 +368,7 @@ function collectAPIPresence() {
     'GPUDeviceLostInfo','GPUCompilationInfo','GPUCompilationMessage',
     'GPUPipelineError','GPUUncapturedErrorEvent','GPUBufferUsage',
     'GPUSupportedFeatures','WGSLLanguageFeatures',
-    // WebXR
+    // ── WebXR ──
     'XRSystem','XRSession','XRFrame','XRCamera','XRSpace','XRReferenceSpace',
     'XRBoundedReferenceSpace','XRView','XRViewerPose','XRViewport','XRPose',
     'XRRigidTransform','XRRenderState','XRInputSource','XRInputSourceArray',
@@ -337,77 +379,152 @@ function collectAPIPresence() {
     'XRLightProbe','XRLightEstimate','XRDOMOverlayState',
     'XRSessionEvent','XRInputSourceEvent','XRInputSourcesChangeEvent',
     'XRReferenceSpaceEvent','XRVisibilityMaskChangeEvent',
-    // USB
+    // ── WebGL ──
+    'WebGL2RenderingContext','WebGLRenderingContext','WebGLShader',
+    'WebGLShaderPrecisionFormat','WebGLTransformFeedback','WebGLVertexArrayObject',
+    // ── USB ──
     'USB','USBDevice','USBConnectionEvent','USBAlternateInterface',
     'USBConfiguration','USBInterface','USBEndpoint','USBInTransferResult',
     'USBOutTransferResult','USBIsochronousInTransferResult',
     'USBIsochronousOutTransferResult','USBIsochronousInTransferPacket',
     'USBIsochronousOutTransferPacket',
-    // Serial
+    // ── Serial ──
     'Serial','SerialPort',
-    // Bluetooth
+    // ── Bluetooth ──
     'Bluetooth','BluetoothDevice','BluetoothRemoteGATTCharacteristic',
     'BluetoothRemoteGATTService','BluetoothRemoteGATTServer',
     'BluetoothRemoteGATTDescriptor','BluetoothCharacteristicProperties',
-    // MIDI
+    // ── MIDI ──
     'MIDIAccess','MIDIInput','MIDIOutput','MIDIInputMap','MIDIOutputMap',
     'MIDIPort','MIDIMessageEvent','MIDIConnectionEvent',
-    // Presentation
+    // ── Presentation ──
     'Presentation','PresentationRequest','PresentationConnection',
     'PresentationReceiver','PresentationAvailability',
     'PresentationConnectionList','PresentationConnectionAvailableEvent',
-    // Payment
+    // ── Payment ──
     'PaymentRequest','PaymentResponse','PaymentAddress','PaymentManager',
     'PaymentMethodChangeEvent','PaymentRequestUpdateEvent',
-    // Credentials
+    // ── Credentials ──
     'Credential','CredentialsContainer','PublicKeyCredential',
     'FederatedCredential','IdentityCredential','DigitalCredential',
     'AuthenticatorAssertionResponse','AuthenticatorAttestationResponse',
-    // ServiceWorker / Cache
+    'IdentityCredentialError',
+    // ── ServiceWorker / Cache ──
     'ServiceWorker','ServiceWorkerRegistration','ServiceWorkerContainer',
     'NavigationPreloadManager','CacheStorage','Cache',
-    // Crypto
+    // ── Crypto ──
     'SubtleCrypto','CryptoKey',
-    // Clipboard
+    // ── Clipboard ──
     'Clipboard','ClipboardItem','ClipboardChangeEvent',
-    // Locks / Storage
+    // ── Locks / Storage ──
     'LockManager','Lock','StorageManager','StorageBucket','StorageBucketManager',
-    // Media
-    'MediaDevices','MediaDeviceInfo',
-    'AudioWorklet','AudioEncoder','AudioDecoder',
-    'VideoEncoder','VideoDecoder','ImageDecoder','ImageTrack','ImageTrackList',
+    'SharedStorage','SharedStorageDeleteMethod',
+    // ── Audio/Media (BotGuard pool) ──
+    'AudioBufferSourceNode','AudioContext','AudioData','AudioDecoder','AudioEncoder',
+    'AudioListener','AudioParam','AudioSinkInfo','AudioWorklet',
+    'BaseAudioContext','BiquadFilterNode','BrowserCaptureMediaStreamTrack',
+    'ChannelSplitterNode','MediaElementAudioSourceNode','PannerNode','AnalyserNode',
+    'HTMLMediaElement','HTMLVideoElement',
+    'MediaDevices','MediaDeviceInfo','MediaError','MediaRecorder',
+    'MediaStreamEvent','MediaStreamTrack','MediaStreamTrackEvent',
+    'MediaStreamTrackVideoStats',
     'MediaKeys','MediaKeySession','MediaKeySystemAccess','MediaKeyStatusMap',
-    'ImageCapture','BarcodeDetector','IdleDetector','Worklet',
-    // FileSystem
-    'FileSystemHandle','FileSystemFileHandle','FileSystemDirectoryHandle',
-    'FileSystemWritableFileStream','FileSystemObserver',
-    // WebTransport
-    'WebTransport','WebTransportError','WebTransportDatagramDuplexStream',
-    'WebTransportBidirectionalStream',
-    // CookieStore
-    'CookieStore','CookieStoreManager','CookieChangeEvent',
-    // Wake Lock / Pressure
-    'WakeLockSentinel','PressureObserver','PressureRecord',
-    // Sensors
-    'Sensor','SensorErrorEvent','Gyroscope','GravitySensor',
-    'AbsoluteOrientationSensor','LinearAccelerationSensor','OrientationSensor',
-    // Battery / Motion
-    'BatteryManager','DeviceMotionEvent','DeviceOrientationEvent',
-    'DeviceMotionEventAcceleration',
-    // NFC
+    'SpeechGrammar','SpeechRecognition','SpeechRecognitionEvent',
+    'SpeechRecognitionPhrase','SpeechSynthesisEvent','SpeechSynthesisUtterance',
+    'SpeechSynthesisVoice',
+    'VideoDecoder','VideoEncoder','VideoFrame','VideoPlaybackQuality',
+    'ImageCapture','ImageDecoder','ImageTrack','ImageTrackList',
+    'VTTCue','BarcodeDetector','IdleDetector','Worklet',
+    // ── SVG (BotGuard pool) ──
+    'SVGAngle','SVGAnimatedBoolean','SVGAnimatedLength','SVGAnimatedLengthList',
+    'SVGAnimationElement','SVGElement',
+    'SVGFEColorMatrixElement','SVGFECompositeElement','SVGFEConvolveMatrixElement',
+    'SVGFEDiffuseLightingElement','SVGFEDisplacementMapElement',
+    'SVGFEDropShadowElement','SVGFEGaussianBlurElement','SVGFESpecularLightingElement',
+    'SVGGraphicsElement','SVGLength','SVGMarkerElement','SVGMatrix',
+    'SVGPoint','SVGPointList','SVGRect','SVGSVGElement',
+    'SVGStopElement','SVGStringList','SVGSwitchElement',
+    'SVGTextContentElement','SVGTransform','SVGTransformList','SVGViewElement',
+    // ── HTML Elements (BotGuard pool) ──
+    'HTMLAnchorElement','HTMLAreaElement','HTMLBaseElement','HTMLBodyElement',
+    'HTMLButtonElement','HTMLCanvasElement','HTMLDetailsElement','HTMLDialogElement',
+    'HTMLElement','HTMLFieldSetElement','HTMLFormControlsCollection','HTMLFormElement',
+    'HTMLFrameSetElement','HTMLGeolocationElement','HTMLHeadElement',
+    'HTMLIFrameElement','HTMLImageElement','HTMLInputElement','HTMLMenuElement',
+    'HTMLObjectElement','HTMLOutputElement','HTMLScriptElement',
+    'HTMLSelectedContentElement','HTMLSourceElement','HTMLTableElement',
+    'HTMLTableRowElement','HTMLTableSectionElement','HTMLTextAreaElement',
+    'HTMLTrackElement',
+    // ── CSS (BotGuard pool) ──
+    'CSSCounterStyleRule','CSSFontFeatureValuesRule','CSSFunctionDeclarations',
+    'CSSFunctionRule','CSSKeyframeRule','CSSKeywordValue','CSSMathSum',
+    'CSSNamespaceRule','CSSPositionTryDescriptors','CSSPositionValue','CSSRule',
+    'CSSSkew','CSSTranslate','Highlight','ViewTimeline',
+    // ── DOM/Core (BotGuard pool) ──
+    'CharacterData','DOMException','DOMImplementation','DOMMatrix',
+    'DOMMatrixReadOnly','DOMQuad','DOMRectList','DOMRectReadOnly',
+    'DOMStringList','DOMTokenList','Document','EditContext','Element',
+    'EventTarget','Node','Path2D','ShadowRoot','TreeWalker','XPathExpression',
+    // ── Events (BotGuard pool) ──
+    'AnimationEvent','AnimationPlaybackEvent','BeforeInstallPromptEvent',
+    'BeforeUnloadEvent','CommandEvent','Event','KeyboardEvent','MouseEvent',
+    'NavigateEvent','NavigationCurrentEntryChangeEvent',
+    'PresentationConnectionAvailableEvent','SecurityPolicyViolationEvent',
+    'SensorErrorEvent','SubmitEvent','TrackEvent','TransitionEvent','WheelEvent',
+    // ── WebRTC (BotGuard pool) ──
+    'RTCDataChannel','RTCEncodedAudioFrame','RTCIceCandidate','RTCIceTransport',
+    'RTCPeerConnection','RTCRtpReceiver','RTCRtpSender','RTCStatsReport',
+    'RTCTrackEvent',
+    // ── Storage/DB (BotGuard pool) ──
+    'IDBCursor','IDBDatabase','IDBIndex','IDBObjectStore',
+    // ── NFC ──
     'NDEFRecord','NDEFMessage','NDEFReadingEvent',
-    // Touch / Input
+    // ── Touch / Input ──
     'Touch','TouchList','ContactsManager','VirtualKeyboard',
     'Keyboard','KeyboardLayoutMap',
-    // Screen / Desktop
-    'EyeDropper','ScreenDetails','ScreenDetailed',
-    // HID
-    'HIDInputReportEvent',
-    // Misc from V8 logs
-    'Notification','OffscreenCanvas',
-    'SpeechRecognition','SpeechSynthesisVoice','SpeechSynthesisEvent',
-    'RTCPeerConnection','RTCDataChannel','RTCIceTransport',
-    'WebGL2RenderingContext','WebGLRenderingContext',
+    // ── HID ──
+    'HID','HIDDevice','HIDInputReportEvent','HIDConnectionEvent',
+    // ── Screen / Desktop ──
+    'EyeDropper','ScreenDetails','ScreenDetailed','ScreenOrientation',
+    // ── Wake Lock / Pressure ──
+    'WakeLockSentinel','PressureObserver','PressureRecord',
+    // ── Sensors ──
+    'Sensor','Gyroscope','GravitySensor',
+    'AbsoluteOrientationSensor','LinearAccelerationSensor','OrientationSensor',
+    // ── Battery / Motion ──
+    'BatteryManager','DeviceMotionEvent','DeviceOrientationEvent',
+    'DeviceMotionEventAcceleration',
+    // ── FileSystem ──
+    'FileSystemHandle','FileSystemFileHandle','FileSystemDirectoryHandle',
+    'FileSystemWritableFileStream','FileSystemObserver',
+    // ── WebTransport ──
+    'WebTransport','WebTransportError','WebTransportDatagramDuplexStream',
+    'WebTransportBidirectionalStream',
+    // ── CookieStore ──
+    'CookieStore','CookieStoreManager','CookieChangeEvent',
+    // ── Other BotGuard pool (mobile + desktop combined 331 classes) ──
+    'AggregateError','Animation','BarProp','CDATASection',
+    'CanvasGradient','CanvasRenderingContext2D','CountQueuingStrategy',
+    'CustomElementRegistry','CustomStateSet','DataTransfer','DataView',
+    'Date','DevicePosture','ElementInternals','EvalError',
+    'File','Float32Array','FormData',
+    'Gamepad','GamepadHapticActuator','GeolocationPosition','GeolocationPositionError',
+    'HighlightRegistry','History','Image',
+    'IntersectionObserver','IntersectionObserverEntry',
+    'KeyframeEffect','Map','MathMLElement','Navigator','NavigatorUAData',
+    'NotRestoredReasons','Notification','Number','Observable',
+    'OffscreenCanvas','OffscreenCanvasRenderingContext2D','Option','PERSISTENT',
+    'PerformanceEntry','PerformanceNavigationTiming','PerformanceScriptTiming',
+    'PushSubscription','Range','ReadableStreamBYOBRequest','RegExp',
+    'ResizeObserverEntry','Scheduler','SourceBuffer','Symbol',
+    'SuppressedError','TextDecoder','TextMetrics',
+    'TrustedScript','TrustedTypePolicy','TrustedTypePolicyFactory',
+    'URLPattern','URLSearchParams','UserActivation',
+    'ValidityState','VisualViewport','VisibilityStateEntry',
+    'WebKitCSSMatrix','WebKitMutationObserver',
+    'WebSocket','WebSocketError',
+    'WindowControlsOverlayGeometryChangeEvent','XMLHttpRequest',
+    // ── Misc from V8 logs ──
     'PerfTestReturnValue','Summarizer','NavigatorManagedData',
     'ProtectedAudience','FetchLaterResult','ContentIndex',
     'CaptureController','CreateMonitor',
@@ -416,7 +533,23 @@ function collectAPIPresence() {
   apis.forEach(name => {
     result[name] = safe(() => typeof window[name] !== 'undefined');
   });
-  // navigator.* entry points
+
+  // ── Window lowercase properties (BotGuard probes) ──
+  const winProps = [
+    'document','getComputedStyle','globalThis','onabort','onchange',
+    'ongamepaddisconnected','ononline','onratechange','onscrollsnapchanging',
+    'onselectstart','onunhandledrejection','onunload',
+    'outerWidth','prototype','removeEventListener','reportError',
+    'scheduler','screenY','self','setInterval','setTimeout','stop',
+    'webkitRTCPeerConnection','webkitResolveLocalFileSystemURL',
+    'webkitSpeechRecognition','webkitSpeechRecognitionError',
+    'webkitSpeechRecognitionEvent',
+  ];
+  winProps.forEach(name => {
+    result['window.' + name] = safe(() => name in window);
+  });
+
+  // ── navigator.* entry points ──
   result['navigator.gpu'] = safe(() => 'gpu' in navigator);
   result['navigator.xr'] = safe(() => 'xr' in navigator);
   result['navigator.usb'] = safe(() => 'usb' in navigator);
@@ -442,6 +575,114 @@ function collectAPIPresence() {
   result['window.cookieStore'] = safe(() => typeof cookieStore !== 'undefined');
   result['window.ontouchstart'] = safe(() => 'ontouchstart' in window);
   result['window.ondevicemotion'] = safe(() => 'ondevicemotion' in window);
+  return result;
+}
+
+// ── 15. BotGuard Prototype Probes ──
+// BotGuard randomly samples properties from CSS, HTMLImageElement, MouseEvent prototypes
+function collectPrototypeProbes() {
+  const result = {};
+
+  // CSS property existence (sample from BotGuard's pool)
+  const cssProps = [
+    'fontVariantLigatures', 'textBox', 'backgroundBlendMode', 'borderBlockEndWidth',
+    'borderImageOutset', 'hyphens', 'paddingInlineEnd', 'scrollTimelineName',
+    'textWrapMode', 'viewTimelineName', 'webkitBackgroundClip', 'webkitUserModify',
+  ];
+  const div = document.createElement('div');
+  const cs = div.style;
+  cssProps.forEach(p => {
+    result['CSSStyle.' + p] = safe(() => p in cs);
+  });
+  result['CSSStyleDeclaration.prototype check'] = safe(() => cs instanceof CSSStyleDeclaration);
+
+  // HTMLImageElement prototype chain
+  const img = document.createElement('img');
+  const imgProps = [
+    'DOCUMENT_NODE', 'NOTATION_NODE', 'align', 'autofocus', 'clientWidth',
+    'getAttributeNodeNS', 'hasAttributes', 'height', 'lang', 'removeEventListener',
+    'scrollHeight', 'scrollLeft', 'scrollWidth', 'setAttribute', 'name',
+    'getElementsByTagNameNS', 'lookupNamespaceURI', 'removeAttributeNS',
+  ];
+  imgProps.forEach(p => {
+    result['HTMLImageElement.' + p] = safe(() => p in img);
+  });
+  result['HTMLImageElement proto chain'] = safe(() =>
+    img instanceof HTMLImageElement && img instanceof HTMLElement && img instanceof Element
+  );
+
+  // MouseEvent prototype integrity
+  const me = new MouseEvent('click');
+  const meProps = ['button', 'metaKey', 'pageX', 'pageY', 'preventDefault',
+    'cancelable', 'shiftKey', 'isTrusted', 'type', 'bubbles'];
+  meProps.forEach(p => {
+    result['MouseEvent.' + p] = safe(() => p in me);
+  });
+
+  return result;
+}
+
+// ── 16. Document & Environment ──
+function collectEnvironment() {
+  return {
+    'Intl.DateTimeFormat timezone': safe(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+    'new Date().getTimezoneOffset()': safe(() => new Date().getTimezoneOffset()),
+    'document.readyState': safe(() => document.readyState),
+    'document.visibilityState': safe(() => document.visibilityState),
+    'document.hidden': safe(() => document.hidden),
+    'document.URL': safe(() => document.URL),
+    'document.domain': safe(() => document.domain),
+    'document.characterSet': safe(() => document.characterSet),
+    'document.contentType': safe(() => document.contentType),
+    'localStorage available': safe(() => { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); return true; }),
+    'sessionStorage available': safe(() => { sessionStorage.setItem('__t', '1'); sessionStorage.removeItem('__t'); return true; }),
+    'indexedDB available': safe(() => typeof indexedDB !== 'undefined'),
+    'window.parent === window': safe(() => window.parent === window),
+    'Number.toString()': safe(() => Number.toString()),
+    'Function.toString()': safe(() => Function.toString()),
+  };
+}
+
+// ── 17. Plugins Detail ──
+function collectPluginsDetail() {
+  const result = {};
+  const p = navigator.plugins;
+  result['plugins.length'] = safe(() => p.length);
+  result['Object.keys(plugins)'] = safe(() => JSON.stringify(Object.keys(p)));
+  result['plugins[Symbol.iterator]'] = safe(() => typeof p[Symbol.iterator]);
+  result['plugins.item(0)'] = safe(() => p.item(0)?.name ?? null);
+  result['plugins.namedItem("x")'] = safe(() => p.namedItem('x'));
+  result['plugins.refresh exists'] = safe(() => typeof p.refresh);
+  // own vs prototype
+  result['plugins has own item'] = safe(() => Object.hasOwn(p, 'item'));
+  result['plugins has own namedItem'] = safe(() => Object.hasOwn(p, 'namedItem'));
+  result['plugins has own refresh'] = safe(() => Object.hasOwn(p, 'refresh'));
+  result['plugins has own length'] = safe(() => Object.hasOwn(p, 'length'));
+  // prototype descriptor check
+  result['PluginArray.prototype.item'] = safe(() => typeof PluginArray.prototype.item);
+  result['PluginArray.prototype.namedItem'] = safe(() => typeof PluginArray.prototype.namedItem);
+  result['PluginArray.prototype.refresh'] = safe(() => typeof PluginArray.prototype.refresh);
+  // mimeTypes same checks
+  const m = navigator.mimeTypes;
+  result['mimeTypes.length'] = safe(() => m.length);
+  result['Object.keys(mimeTypes)'] = safe(() => JSON.stringify(Object.keys(m)));
+  result['mimeTypes has own item'] = safe(() => Object.hasOwn(m, 'item'));
+  result['mimeTypes has own namedItem'] = safe(() => Object.hasOwn(m, 'namedItem'));
+  return result;
+}
+
+// ── 18. Media Devices ──
+async function collectMediaDevices() {
+  const result = {};
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    result['mediaDevices.count'] = devices.length;
+    const kinds = {};
+    devices.forEach(d => { kinds[d.kind] = (kinds[d.kind] || 0) + 1; });
+    result['mediaDevices.kinds'] = JSON.stringify(kinds);
+  } catch(e) {
+    result['mediaDevices.error'] = e.message;
+  }
   return result;
 }
 
@@ -477,15 +718,18 @@ async function runAll() {
   container.innerHTML = '';
 
   // async collectors
-  const [clickTrust, permissions, iframeTest] = await Promise.all([
+  const [clickTrust, permissions, iframeTest, uaHighEntropy, mediaDevices] = await Promise.all([
     collectClickTrust(),
     collectPermissions(),
     collectIframeTest(),
+    collectUAHighEntropy(),
+    collectMediaDevices(),
   ]);
 
   const sections = [
     ['Navigator', collectNavigator()],
     ['User-Agent Data', collectUserAgentData()],
+    ['UA High Entropy', uaHighEntropy],
     ['Screen & Window', collectScreen()],
     ['Performance & Timing', collectPerformance()],
     ['Connection / Network', collectConnection()],
@@ -496,7 +740,11 @@ async function runAll() {
     ['iframe Cross-Origin Test', iframeTest],
     ['toString() Integrity', collectToString()],
     ['Plugins & Codecs', collectMediaCodecs()],
+    ['Plugins Detail', collectPluginsDetail()],
     ['Prototype Integrity', collectPrototypeIntegrity()],
+    ['BotGuard Prototype Probes', collectPrototypeProbes()],
+    ['Document & Environment', collectEnvironment()],
+    ['Media Devices', mediaDevices],
     ['API Presence (BotGuard sampling)', collectAPIPresence()],
   ];
 
