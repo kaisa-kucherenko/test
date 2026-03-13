@@ -528,6 +528,40 @@ function collectAPIPresence() {
     'PerfTestReturnValue','Summarizer','NavigatorManagedData',
     'ProtectedAudience','FetchLaterResult','ContentIndex',
     'CaptureController','CreateMonitor',
+    // ── Mar 13 new classes ──
+    'Iterator','DisposableStack','RestrictionTarget','PageSwapEvent',
+    'IDBRecord','Fence','WebSocketStream','FontData',
+    'ViewTransition','ViewTransitionTypeSet','PageTransitionEvent',
+    'InterestEvent','IntegrityViolationReportBody','LayoutShiftAttribution',
+    'FragmentDirective','LaunchQueue','Scheduling',
+    'BackgroundFetchRecord','PasswordCredential',
+    'PerformanceLongTaskTiming','PerformanceElementTiming',
+    'PerformanceServerTiming','PerformanceMark',
+    'CSSImportRule','CSSStyleRule','CSSUnitValue','CSSRotate',
+    'CSSScale','CSSMathClamp','CSSMathNegate','CSSStyleSheet',
+    'WebKitCSSMatrix','AudioDecoder','VideoDecoder','VideoFrame',
+    'MediaSession','MediaCapabilities','MediaKeys','MediaKeyStatusMap',
+    'MediaRecorder','MediaStreamTrack','MediaStreamEvent','MediaQueryListEvent',
+    'SVGAnimateElement','SVGClipPathElement','SVGDescElement',
+    'SVGFETurbulenceElement','SVGFEOffsetElement','SVGImageElement',
+    'SVGLengthList','SVGPatternElement','SVGPolygonElement',
+    'SVGPreserveAspectRatio','SVGRectElement','SVGTSpanElement',
+    'SVGTextPositioningElement','SVGUseElement',
+    'HTMLButtonElement','HTMLFieldSetElement','HTMLFrameElement',
+    'HTMLLinkElement','HTMLMenuElement','HTMLOutputElement',
+    'HTMLSelectElement','HTMLSourceElement','HTMLTableCellElement',
+    'HTMLTimeElement',
+    'CloseWatcher','ErrorEvent','FocusEvent','InputEvent',
+    'MessageEvent','ToggleEvent','UIEvent','BlobEvent',
+    'ClipboardEvent','CloseEvent','SubmitEvent','TextFormatUpdateEvent',
+    'IDBVersionChangeEvent','SecurityPolicyViolationEvent',
+    'Float64Array','Uint32Array','WeakRef','Set','String','JSON',
+    'Promise','Error','Notification','PermissionStatus',
+    'ReadableStream','ReadableStreamDefaultReader','Response',
+    'TextEncoder','URLPattern','USBInterface',
+    'IdleDeadline','SyncManager','AnimationTimeline',
+    'ScriptProcessorNode','DOMStringList','NamedNodeMap',
+    'NodeIterator','NodeList','ImageData','FileList',
   ];
   const result = {};
   apis.forEach(name => {
@@ -539,11 +573,15 @@ function collectAPIPresence() {
     'document','getComputedStyle','globalThis','onabort','onchange',
     'ongamepaddisconnected','ononline','onratechange','onscrollsnapchanging',
     'onselectstart','onunhandledrejection','onunload',
-    'outerWidth','prototype','removeEventListener','reportError',
-    'scheduler','screenY','self','setInterval','setTimeout','stop',
+    'prototype','removeEventListener','reportError',
+    'scheduler','self','setInterval','setTimeout','stop',
     'webkitRTCPeerConnection','webkitResolveLocalFileSystemURL',
     'webkitSpeechRecognition','webkitSpeechRecognitionError',
     'webkitSpeechRecognitionEvent',
+    // Mar 13 new
+    'fetchLater','length','onanimationiteration','onbeforeprint',
+    'onclose','onmouseout','open','originAgentCluster',
+    'releaseEvents','resizeBy','screenTop',
   ];
   winProps.forEach(name => {
     result['window.' + name] = safe(() => name in window);
@@ -583,11 +621,22 @@ function collectAPIPresence() {
 function collectPrototypeProbes() {
   const result = {};
 
-  // CSS property existence (sample from BotGuard's pool)
+  // ── CSS property existence (BotGuard pool: Feb + Mar combined 45 props) ──
   const cssProps = [
-    'fontVariantLigatures', 'textBox', 'backgroundBlendMode', 'borderBlockEndWidth',
-    'borderImageOutset', 'hyphens', 'paddingInlineEnd', 'scrollTimelineName',
-    'textWrapMode', 'viewTimelineName', 'webkitBackgroundClip', 'webkitUserModify',
+    // Feb 27 pool
+    'backgroundBlendMode', 'borderBlockEndWidth', 'borderImageOutset',
+    'cornerBlockEndShape', 'cornerTopRightShape', 'fontVariantLigatures',
+    'hyphens', 'overrideColors', 'paddingInlineEnd', 'scrollTimelineName',
+    'system', 'textBox', 'textWrapMode', 'viewTimelineName',
+    'webkitBackgroundClip', 'webkitMaskBoxImageOutset', 'webkitUserModify',
+    // Mar 13 new
+    'alignmentBaseline', 'anchorName', 'borderBlockStyle', 'borderBottomWidth',
+    'borderRightWidth', 'containIntrinsicInlineSize', 'cornerRightShape',
+    'cornerTopLeftShape', 'cssFloat', 'descentOverride', 'initialValue',
+    'inlineSize', 'insetBlock', 'marginBlockStart', 'maskMode',
+    'offsetPosition', 'opacity', 'overflow', 'overflowAnchor', 'overflowWrap',
+    'scale', 'sizeAdjust', 'src', 'touchAction', 'translate',
+    'webkitBorderEndWidth', 'webkitBorderHorizontalSpacing',
   ];
   const div = document.createElement('div');
   const cs = div.style;
@@ -595,14 +644,31 @@ function collectPrototypeProbes() {
     result['CSSStyle.' + p] = safe(() => p in cs);
   });
   result['CSSStyleDeclaration.prototype check'] = safe(() => cs instanceof CSSStyleDeclaration);
+  // Mar 13: BotGuard probes hasOwnProperty on CSSStyleDeclaration — prototype chain integrity
+  result['CSSStyleDeclaration.hasOwnProperty exists'] = safe(() => typeof cs.hasOwnProperty === 'function');
+  result['CSSStyleDeclaration.hasOwnProperty native'] = safe(() => cs.hasOwnProperty.toString().includes('[native code]'));
 
-  // HTMLImageElement prototype chain
+  // ── HTMLImageElement prototype chain (BotGuard pool: Feb + Mar combined 62 props) ──
   const img = document.createElement('img');
   const imgProps = [
-    'DOCUMENT_NODE', 'NOTATION_NODE', 'align', 'autofocus', 'clientWidth',
-    'getAttributeNodeNS', 'hasAttributes', 'height', 'lang', 'removeEventListener',
-    'scrollHeight', 'scrollLeft', 'scrollWidth', 'setAttribute', 'name',
-    'getElementsByTagNameNS', 'lookupNamespaceURI', 'removeAttributeNS',
+    // Feb 27 pool
+    'DOCUMENT_FRAGMENT_NODE', 'DOCUMENT_NODE', 'DOCUMENT_POSITION_CONTAINED_BY',
+    'DOCUMENT_POSITION_PRECEDING', 'NOTATION_NODE', 'TEXT_NODE',
+    'align', 'autofocus', 'childNodes', 'className', 'clientWidth',
+    'dir', 'dispatchEvent', 'getAttributeNodeNS', 'getElementsByTagNameNS',
+    'hasAttributes', 'height', 'hspace', 'innerHTML', 'isMap',
+    'lang', 'localName', 'nodeName', 'normalize', 'removeAttribute',
+    'removeEventListener', 'scrollHeight', 'scrollLeft', 'scrollWidth',
+    'setAttribute', 'tagName',
+    // Mar 13 new
+    'ATTRIBUTE_NODE', 'DOCUMENT_POSITION_CONTAINS', 'DOCUMENT_POSITION_DISCONNECTED',
+    'ENTITY_NODE', 'ENTITY_REFERENCE_NODE',
+    'appendChild', 'before', 'border', 'compareDocumentPosition', 'complete',
+    'constructor', 'enterKeyHint', 'focus', 'getElementsByTagName',
+    'hasAttribute', 'hasAttributeNS', 'insertBefore', 'longDesc',
+    'lookupNamespaceURI', 'name', 'offsetLeft', 'offsetTop', 'offsetWidth',
+    'referrerPolicy', 'removeAttributeNode', 'removeChild', 'replaceChild',
+    'scrollTop', 'title', 'width', 'x',
   ];
   imgProps.forEach(p => {
     result['HTMLImageElement.' + p] = safe(() => p in img);
@@ -610,19 +676,148 @@ function collectPrototypeProbes() {
   result['HTMLImageElement proto chain'] = safe(() =>
     img instanceof HTMLImageElement && img instanceof HTMLElement && img instanceof Element
   );
+  // Mar 13: BotGuard probes .constructor — prototype chain integrity
+  result['HTMLImageElement.constructor === HTMLImageElement'] = safe(() => img.constructor === HTMLImageElement);
+  result['HTMLImageElement.constructor.name'] = safe(() => img.constructor.name);
 
-  // MouseEvent prototype integrity
+  // ── MouseEvent prototype integrity (BotGuard pool: Feb + Mar combined) ──
   const me = new MouseEvent('click');
-  const meProps = ['button', 'metaKey', 'pageX', 'pageY', 'preventDefault',
-    'cancelable', 'shiftKey', 'isTrusted', 'type', 'bubbles'];
+  const meProps = [
+    // Feb 27 pool
+    'button', 'cancelable', 'metaKey', 'pageX', 'pageY',
+    'preventDefault', 'shiftKey',
+    // Mar 13 new
+    'altKey', 'bubbles', 'clientX', 'clientY', 'ctrlKey',
+    'initEvent', 'initMouseEvent',
+    // Always present
+    'isTrusted', 'type',
+  ];
   meProps.forEach(p => {
     result['MouseEvent.' + p] = safe(() => p in me);
+  });
+  // Mar 13: BotGuard checks legacy methods — verify they're native
+  result['MouseEvent.initEvent native'] = safe(() => me.initEvent.toString().includes('[native code]'));
+  result['MouseEvent.initMouseEvent native'] = safe(() => me.initMouseEvent.toString().includes('[native code]'));
+
+  return result;
+}
+
+// ── 16. Navigator Getter CALL Test (Mar 13 new pattern) ──
+// BotGuard now calls getters directly, not just reads properties
+function collectNavigatorGetterCalls() {
+  const result = {};
+  const navProto = Navigator.prototype;
+
+  // All navigator properties BotGuard has probed (Feb + Mar)
+  const navGetterProps = [
+    'webdriver', 'hardwareConcurrency', 'maxTouchPoints', 'deviceMemory',
+    'languages', 'plugins', 'mimeTypes', 'connection',
+    // Random section probes
+    'webkitTemporaryStorage', 'updateAdInterestGroups', 'mediaSession',
+    'permissions', 'appCodeName', 'ink',
+  ];
+
+  navGetterProps.forEach(prop => {
+    const desc = Object.getOwnPropertyDescriptor(navProto, prop);
+    if (desc && desc.get) {
+      result['Navigator.' + prop + ' getter exists'] = true;
+      result['Navigator.' + prop + ' getter native'] = safe(() => desc.get.toString().includes('[native code]'));
+      result['Navigator.' + prop + ' getter.call()'] = safe(() => {
+        const val = desc.get.call(navigator);
+        return typeof val === 'object' ? (val?.constructor?.name || typeof val) : val;
+      });
+    } else {
+      result['Navigator.' + prop + ' getter exists'] = false;
+    }
   });
 
   return result;
 }
 
-// ── 16. Document & Environment ──
+// ── 17. BotGuard div+CSS Exact Probe (PRIMARY DETECTION VECTOR) ──
+// Replicates exactly what BotGuard does: createElement("div") → .style → read CSS prop
+// This is where our spoofing leaks — 94% fail rate when this probe is present
+function collectDivCSSProbe() {
+  const result = {};
+
+  // Step 1: createElement("div") — exactly as BotGuard does
+  const div = document.createElement('div');
+  result['div created'] = safe(() => div instanceof HTMLDivElement);
+  result['div.style exists'] = safe(() => typeof div.style === 'object');
+  result['div.style instanceof CSSStyleDeclaration'] = safe(() => div.style instanceof CSSStyleDeclaration);
+
+  // Step 2: access .style and read properties — check for side effects
+  const style = div.style;
+  result['div.style.constructor.name'] = safe(() => style.constructor.name);
+  result['div.style.__proto__ === CSSStyleDeclaration.prototype'] = safe(() =>
+    Object.getPrototypeOf(style) === CSSStyleDeclaration.prototype
+  );
+
+  // Step 3: check if accessing style triggers any prototype pollution
+  result['CSSStyleDeclaration.prototype pristine'] = safe(() => {
+    const proto = CSSStyleDeclaration.prototype;
+    const ownKeys = Object.getOwnPropertyNames(proto);
+    // Should have standard methods like getPropertyValue, setProperty, etc.
+    const expected = ['getPropertyValue', 'setProperty', 'removeProperty', 'item'];
+    return expected.every(k => ownKeys.includes(k));
+  });
+
+  // Step 4: verify property descriptors are correct
+  result['div.style property descriptor for "opacity"'] = safe(() => {
+    // In real browser, CSS props on style object are own properties with value descriptor
+    const val = style.opacity;
+    return typeof val;  // should be "string" (empty string)
+  });
+
+  // Step 5: check getComputedStyle works (BotGuard probes Window.getComputedStyle)
+  document.body.appendChild(div);
+  result['getComputedStyle(div).opacity'] = safe(() => getComputedStyle(div).opacity);
+  result['getComputedStyle(div).display'] = safe(() => getComputedStyle(div).display);
+  document.body.removeChild(div);
+
+  return result;
+}
+
+// ── 18. BotGuard MouseEvent Exact Probe ──
+// Replicates: createEvent("MouseEvents") → read property
+function collectMouseEventProbe() {
+  const result = {};
+
+  // Step 1: createEvent (exactly as BotGuard does — NOT new MouseEvent())
+  const evt = document.createEvent('MouseEvents');
+  result['createEvent("MouseEvents") instanceof MouseEvent'] = safe(() => evt instanceof MouseEvent);
+  result['createEvent result.constructor.name'] = safe(() => evt.constructor.name);
+  result['createEvent result.type'] = safe(() => evt.type);  // should be ""
+
+  // Step 2: check all properties BotGuard probes
+  result['evt.button'] = safe(() => evt.button);
+  result['evt.bubbles'] = safe(() => evt.bubbles);
+  result['evt.ctrlKey'] = safe(() => evt.ctrlKey);
+  result['evt.altKey'] = safe(() => evt.altKey);
+  result['evt.shiftKey'] = safe(() => evt.shiftKey);
+  result['evt.metaKey'] = safe(() => evt.metaKey);
+  result['evt.clientX'] = safe(() => evt.clientX);
+  result['evt.clientY'] = safe(() => evt.clientY);
+  result['evt.pageX'] = safe(() => evt.pageX);
+  result['evt.pageY'] = safe(() => evt.pageY);
+  result['evt.cancelable'] = safe(() => evt.cancelable);
+  result['evt.isTrusted'] = safe(() => evt.isTrusted);
+
+  // Step 3: legacy methods must exist and be native
+  result['evt.initEvent exists'] = safe(() => typeof evt.initEvent === 'function');
+  result['evt.initMouseEvent exists'] = safe(() => typeof evt.initMouseEvent === 'function');
+  result['evt.initEvent native'] = safe(() => evt.initEvent.toString().includes('[native code]'));
+  result['evt.initMouseEvent native'] = safe(() => evt.initMouseEvent.toString().includes('[native code]'));
+  result['evt.preventDefault native'] = safe(() => evt.preventDefault.toString().includes('[native code]'));
+
+  // Step 4: prototype chain
+  result['MouseEvent.prototype.initMouseEvent exists'] = safe(() => typeof MouseEvent.prototype.initMouseEvent === 'function');
+  result['Event.prototype.initEvent exists'] = safe(() => typeof Event.prototype.initEvent === 'function');
+
+  return result;
+}
+
+// ── 20. Document & Environment ──
 function collectEnvironment() {
   return {
     'Intl.DateTimeFormat timezone': safe(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
@@ -643,7 +838,7 @@ function collectEnvironment() {
   };
 }
 
-// ── 17. Plugins Detail ──
+// ── 21. Plugins Detail ──
 function collectPluginsDetail() {
   const result = {};
   const p = navigator.plugins;
@@ -671,7 +866,7 @@ function collectPluginsDetail() {
   return result;
 }
 
-// ── 18. Media Devices ──
+// ── 22. Media Devices ──
 async function collectMediaDevices() {
   const result = {};
   try {
@@ -743,6 +938,9 @@ async function runAll() {
     ['Plugins Detail', collectPluginsDetail()],
     ['Prototype Integrity', collectPrototypeIntegrity()],
     ['BotGuard Prototype Probes', collectPrototypeProbes()],
+    ['Navigator Getter CALL Test', collectNavigatorGetterCalls()],
+    ['BotGuard div+CSS Exact Probe', collectDivCSSProbe()],
+    ['BotGuard MouseEvent Exact Probe', collectMouseEventProbe()],
     ['Document & Environment', collectEnvironment()],
     ['Media Devices', mediaDevices],
     ['API Presence (BotGuard sampling)', collectAPIPresence()],
