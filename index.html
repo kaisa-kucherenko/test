@@ -315,6 +315,256 @@ function collectIframeTest() {
   });
 }
 
+// ── 10b. iframe Hardware Spoof Detection ──
+function collectIframeHardwareSpoof() {
+  const PROPS = [
+    {key: 'navigator.hardwareConcurrency', get: w => w.navigator.hardwareConcurrency},
+    {key: 'navigator.deviceMemory', get: w => w.navigator.deviceMemory},
+    {key: 'navigator.platform', get: w => w.navigator.platform},
+    {key: 'navigator.maxTouchPoints', get: w => w.navigator.maxTouchPoints},
+    {key: 'navigator.webdriver', get: w => w.navigator.webdriver},
+    {key: 'navigator.languages', get: w => JSON.stringify(w.navigator.languages)},
+    {key: 'navigator.vendor', get: w => w.navigator.vendor},
+    {key: 'navigator.appVersion', get: w => w.navigator.appVersion},
+    {key: 'navigator.plugins.length', get: w => w.navigator.plugins.length},
+    {key: 'navigator.mimeTypes.length', get: w => w.navigator.mimeTypes.length},
+    {key: 'navigator.connection?.rtt', get: w => w.navigator.connection?.rtt},
+    {key: 'navigator.connection?.downlink', get: w => w.navigator.connection?.downlink},
+    {key: 'navigator.connection?.effectiveType', get: w => w.navigator.connection?.effectiveType},
+    {key: 'screen.width', get: w => w.screen.width},
+    {key: 'screen.height', get: w => w.screen.height},
+    {key: 'screen.colorDepth', get: w => w.screen.colorDepth},
+    {key: 'WebGL renderer', get: w => {
+      const c = w.document.createElement('canvas');
+      const gl = c.getContext('webgl');
+      return gl ? gl.getParameter(37446) : 'no webgl';
+    }},
+    {key: 'WebGL vendor', get: w => {
+      const c = w.document.createElement('canvas');
+      const gl = c.getContext('webgl');
+      return gl ? gl.getParameter(37445) : 'no webgl';
+    }},
+    {key: 'performance.memory?.jsHeapSizeLimit', get: w => w.performance.memory?.jsHeapSizeLimit},
+  ];
+
+  function compareWindow(iframeName, iframeWin, result) {
+    PROPS.forEach(p => {
+      const k = iframeName + ' → ' + p.key;
+      try {
+        const mainVal = p.get(window);
+        const ifrVal = p.get(iframeWin);
+        const mainStr = String(mainVal);
+        const ifrStr = String(ifrVal);
+        if (mainStr === ifrStr) {
+          result[k] = mainStr + ' → CONSISTENT';
+        } else {
+          result[k] = mainStr + ' vs ' + ifrStr + ' → SPOOFED';
+          result[k] = {toString() { return mainStr + ' vs ' + ifrStr + ' → SPOOFED'; }, _fail: true};
+        }
+      } catch(e) {
+        result[k] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+      }
+    });
+  }
+
+  function advancedChecks(iframeName, iframeWin, result) {
+    // Prototype chain check — hardwareConcurrency should be on prototype, not instance
+    const k1 = iframeName + ' → hardwareConcurrency prototype check';
+    try {
+      const desc = Object.getOwnPropertyDescriptor(iframeWin.Navigator.prototype, 'hardwareConcurrency');
+      const instDesc = Object.getOwnPropertyDescriptor(iframeWin.navigator, 'hardwareConcurrency');
+      if (instDesc) {
+        result[k1] = {toString() { return 'FAIL: overridden on instance'; }, _fail: true};
+      } else if (desc && desc.get) {
+        result[k1] = 'PASS: getter on prototype';
+      } else {
+        result[k1] = {toString() { return 'WARN: no getter found'; }, _warn: true};
+      }
+    } catch(e) {
+      result[k1] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+    }
+
+    // toString native check
+    const k2 = iframeName + ' → hardwareConcurrency toString native';
+    try {
+      const desc = Object.getOwnPropertyDescriptor(iframeWin.Navigator.prototype, 'hardwareConcurrency');
+      const str = desc?.get?.toString() || '';
+      if (str.includes('[native code]')) {
+        result[k2] = 'PASS: [native code]';
+      } else {
+        result[k2] = {toString() { return 'FAIL: not [native code]'; }, _fail: true};
+      }
+    } catch(e) {
+      result[k2] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+    }
+
+    // hasOwnProperty check — should be inherited, not own
+    const k3 = iframeName + ' → hardwareConcurrency hasOwnProperty';
+    try {
+      const hasOwn = iframeWin.navigator.hasOwnProperty('hardwareConcurrency');
+      if (hasOwn) {
+        result[k3] = {toString() { return 'FAIL: own property (should be inherited)'; }, _fail: true};
+      } else {
+        result[k3] = 'PASS: inherited from prototype';
+      }
+    } catch(e) {
+      result[k3] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+    }
+
+    // Function.prototype.toString integrity
+    const k4 = iframeName + ' → Function.prototype.toString integrity';
+    try {
+      const ifrStr = iframeWin.Function.prototype.toString.toString();
+      const mainStr = Function.prototype.toString.toString();
+      if (ifrStr === mainStr) {
+        result[k4] = 'PASS: matches main window';
+      } else {
+        result[k4] = {toString() { return 'FAIL: ' + ifrStr; }, _fail: true};
+      }
+    } catch(e) {
+      result[k4] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+    }
+  }
+
+  function createIframe(opts) {
+    const iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    if (opts.sandbox) iframe.sandbox = opts.sandbox;
+    if (opts.srcdoc !== undefined) iframe.srcdoc = opts.srcdoc;
+    if (opts.src) iframe.src = opts.src;
+    document.body.appendChild(iframe);
+    return iframe;
+  }
+
+  return new Promise(resolve => {
+    const result = {};
+    const iframes = [];
+
+    // 1. srcdoc iframe
+    const srcdocIf = createIframe({srcdoc: '<html><body><script><\/script></body></html>'});
+    iframes.push(srcdocIf);
+
+    // 2. blank iframe
+    const blankIf = createIframe({src: 'about:blank'});
+    iframes.push(blankIf);
+
+    // 3. dynamically appended iframe (read immediately — race condition test)
+    const dynIf = createIframe({});
+    iframes.push(dynIf);
+    try {
+      compareWindow('dynamic iframe (immediate)', dynIf.contentWindow, result);
+    } catch(e) {
+      result['dynamic iframe (immediate) → access'] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+    }
+
+    // 4. sandbox iframe
+    const sandboxIf = createIframe({sandbox: 'allow-scripts', srcdoc: '<html><body><script><\/script></body></html>'});
+    iframes.push(sandboxIf);
+
+    // 5. nested iframe — outer srcdoc creates inner iframe
+    const nestedOuter = createIframe({srcdoc: '<html><body><iframe id="inner" srcdoc="<html><body><script><\\/script></body></html>"></iframe><script><\/script></body></html>'});
+    iframes.push(nestedOuter);
+
+    setTimeout(() => {
+      // srcdoc
+      try {
+        compareWindow('srcdoc iframe', srcdocIf.contentWindow, result);
+        advancedChecks('srcdoc iframe', srcdocIf.contentWindow, result);
+      } catch(e) {
+        result['srcdoc iframe → access'] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+      }
+
+      // blank
+      try {
+        compareWindow('blank iframe', blankIf.contentWindow, result);
+        advancedChecks('blank iframe', blankIf.contentWindow, result);
+      } catch(e) {
+        result['blank iframe → access'] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+      }
+
+      // dynamic (delayed read — compare with immediate read above)
+      try {
+        compareWindow('dynamic iframe (delayed)', dynIf.contentWindow, result);
+      } catch(e) {
+        result['dynamic iframe (delayed) → access'] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+      }
+
+      // sandbox
+      try {
+        compareWindow('sandbox iframe', sandboxIf.contentWindow, result);
+        advancedChecks('sandbox iframe', sandboxIf.contentWindow, result);
+      } catch(e) {
+        result['sandbox iframe → access'] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+      }
+
+      // nested — wait extra for inner iframe
+      setTimeout(() => {
+        try {
+          const innerIf = nestedOuter.contentWindow.document.getElementById('inner');
+          if (innerIf && innerIf.contentWindow) {
+            compareWindow('nested iframe (inner)', innerIf.contentWindow, result);
+            advancedChecks('nested iframe (inner)', innerIf.contentWindow, result);
+          } else {
+            result['nested iframe → inner access'] = {toString() { return 'BLOCKED: inner iframe not found'; }, _warn: true};
+          }
+        } catch(e) {
+          result['nested iframe → access'] = {toString() { return 'BLOCKED: ' + e.message; }, _warn: true};
+        }
+
+        // Worker parallelism test
+        try {
+          const claimed = navigator.hardwareConcurrency || 4;
+          const workerCount = Math.min(claimed, 8);
+          const workerCode = `
+            onmessage = function() {
+              const start = performance.now();
+              while (performance.now() - start < 200) { Math.random(); }
+              postMessage(performance.now() - start);
+            };
+          `;
+          const blob = new Blob([workerCode], {type: 'application/javascript'});
+          const url = URL.createObjectURL(blob);
+          const workers = [];
+          const times = [];
+          let done = 0;
+
+          for (let i = 0; i < workerCount; i++) {
+            const w = new Worker(url);
+            workers.push(w);
+            w.onmessage = function(e) {
+              times.push(e.data);
+              done++;
+              if (done === workerCount) {
+                workers.forEach(wk => wk.terminate());
+                URL.revokeObjectURL(url);
+                const avgTime = times.reduce((a, b) => a + b, 0) / times.length;
+                // If truly parallel, avg ~200ms. If serialized, avg ~200ms * N / cores
+                const effectiveCores = Math.round((200 / avgTime) * workerCount * 10) / 10;
+                if (Math.abs(effectiveCores - claimed) <= 1.5) {
+                  result['Worker parallelism test'] = 'Claimed: ' + claimed + ', Measured: ' + effectiveCores + ' → CONSISTENT';
+                } else {
+                  result['Worker parallelism test'] = {
+                    toString() { return 'Claimed: ' + claimed + ', Measured: ' + effectiveCores + ' → MISMATCH'; },
+                    _fail: true
+                  };
+                }
+                // cleanup iframes
+                iframes.forEach(f => { try { document.body.removeChild(f); } catch(e) {} });
+                resolve(result);
+              }
+            };
+          }
+          workers.forEach(w => w.postMessage('go'));
+        } catch(e) {
+          result['Worker parallelism test'] = {toString() { return 'ERROR: ' + e.message; }, _warn: true};
+          iframes.forEach(f => { try { document.body.removeChild(f); } catch(e2) {} });
+          resolve(result);
+        }
+      }, 150);
+    }, 150);
+  });
+}
+
 // ── 11. toString() Integrity ──
 function collectToString() {
   return {
@@ -970,8 +1220,12 @@ function renderSection(title, data, container) {
     row.className = 'row';
     const valStr = v === undefined ? 'undefined' : v === null ? 'null' : String(v);
     let cls = 'val';
-    if (v === false || v === undefined || v === null || (typeof v === 'string' && v.startsWith('ERROR'))) cls += ' fail';
-    else if (v === true) cls += ' ok';
+    if (v && v._fail) cls += ' fail';
+    else if (v && v._warn) cls += ' warn';
+    else if (v === false || v === undefined || v === null || (typeof v === 'string' && v.startsWith('ERROR'))) cls += ' fail';
+    else if (v === true || (typeof v === 'string' && (v.includes('CONSISTENT') || v.startsWith('PASS')))) cls += ' ok';
+    else if (typeof v === 'string' && v.includes('SPOOFED')) cls += ' fail';
+    else if (typeof v === 'string' && v.startsWith('BLOCKED')) cls += ' warn';
     row.innerHTML = '<span class="key">' + k + '</span><span class="' + cls + '">' + valStr + '</span>';
     body.appendChild(row);
   }
@@ -986,10 +1240,11 @@ async function runAll() {
   container.innerHTML = '';
 
   // async collectors
-  const [clickTrust, permissions, iframeTest, uaHighEntropy, mediaDevices] = await Promise.all([
+  const [clickTrust, permissions, iframeTest, iframeHwSpoof, uaHighEntropy, mediaDevices] = await Promise.all([
     collectClickTrust(),
     collectPermissions(),
     collectIframeTest(),
+    collectIframeHardwareSpoof(),
     collectUAHighEntropy(),
     collectMediaDevices(),
   ]);
@@ -1006,6 +1261,7 @@ async function runAll() {
     ['Click Trust Test', clickTrust],
     ['Permissions', permissions],
     ['iframe Cross-Origin Test', iframeTest],
+    ['iframe Hardware Spoof Detection', iframeHwSpoof],
     ['toString() Integrity', collectToString()],
     ['Plugins & Codecs', collectMediaCodecs()],
     ['Plugins Detail', collectPluginsDetail()],
