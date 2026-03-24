@@ -134,6 +134,7 @@ function collectScreen() {
     'window.devicePixelRatio': safe(() => window.devicePixelRatio),
     'window.screenX': safe(() => window.screenX),
     'window.screenY': safe(() => window.screenY),
+    'window.parent === window': safe(() => window.parent === window),
     'window.self === window': safe(() => window.self === window),
     'screen.orientation.type': safe(() => screen.orientation?.type),
     'screen.orientation.angle': safe(() => screen.orientation?.angle),
@@ -187,11 +188,36 @@ function collectChrome() {
     'window.chrome.csi': safe(() => typeof window.chrome?.csi),
     'window.chrome.loadTimes': safe(() => typeof window.chrome?.loadTimes),
     'window.chrome.runtime': safe(() => typeof window.chrome?.runtime),
+    'chrome.csi.toString()': safe(() => window.chrome?.csi?.toString()),
+    'chrome.loadTimes.toString()': safe(() => window.chrome?.loadTimes?.toString()),
     'chrome.csi()': safe(() => JSON.stringify(window.chrome?.csi?.())),
+    'chrome.csi() startE descriptor': safe(() => {
+      const obj = window.chrome?.csi?.();
+      if (!obj) return 'null';
+      const d = Object.getOwnPropertyDescriptor(obj, 'startE');
+      return d ? JSON.stringify({hasGet: !!d.get, hasSet: !!d.set, hasValue: 'value' in d, enum: d.enumerable, conf: d.configurable}) : 'no descriptor';
+    }),
+    'chrome.loadTimes()': safe(() => JSON.stringify(window.chrome?.loadTimes?.())),
+    'chrome.loadTimes() requestTime descriptor': safe(() => {
+      const obj = window.chrome?.loadTimes?.();
+      if (!obj) return 'null';
+      const d = Object.getOwnPropertyDescriptor(obj, 'requestTime');
+      return d ? JSON.stringify({hasGet: !!d.get, hasSet: !!d.set, hasValue: 'value' in d, enum: d.enumerable, conf: d.configurable}) : 'no descriptor';
+    }),
+    'chrome on Window.prototype': safe(() => Window.prototype.hasOwnProperty('chrome')),
+    'chrome own property': safe(() => window.hasOwnProperty('chrome')),
+    'chrome.csi.name': safe(() => window.chrome?.csi?.name),
+    'chrome.loadTimes.name': safe(() => window.chrome?.loadTimes?.name),
     'history.length': safe(() => history.length),
     'window.isSecureContext': safe(() => window.isSecureContext),
     'window.trustedTypes': safe(() => typeof window.trustedTypes),
     'trustedTypes.emptyHTML': safe(() => typeof window.trustedTypes?.emptyHTML),
+    'typeof Number': safe(() => typeof Number),
+    'typeof Function': safe(() => typeof Function),
+    'typeof Date': safe(() => typeof Date),
+    'typeof Object': safe(() => typeof Object),
+    'typeof Math': safe(() => typeof Math),
+    'typeof Array': safe(() => typeof Array),
   };
 }
 
@@ -272,6 +298,15 @@ function collectIframeTest() {
     setTimeout(() => {
       result['iframe.contentWindow exists'] = safe(() => !!iframe.contentWindow);
       result['iframe.contentWindow.chrome'] = safe(() => typeof iframe.contentWindow?.chrome);
+      result['iframe.contentWindow.chrome.csi'] = safe(() => typeof iframe.contentWindow?.chrome?.csi);
+      result['iframe.contentWindow.chrome.csi()'] = safe(() => JSON.stringify(iframe.contentWindow?.chrome?.csi?.()));
+      result['iframe.contentWindow.chrome.csi() descriptor'] = safe(() => {
+        const obj = iframe.contentWindow?.chrome?.csi?.();
+        if (!obj) return 'null';
+        const d = Object.getOwnPropertyDescriptor(obj, 'startE');
+        return d ? JSON.stringify({hasGet: !!d.get, hasSet: !!d.set, hasValue: 'value' in d}) : 'no descriptor';
+      });
+      result['iframe.contentWindow.chrome.runtime'] = safe(() => typeof iframe.contentWindow?.chrome?.runtime);
       result['iframe.contentWindow.navigator.webdriver'] = safe(() => iframe.contentWindow?.navigator?.webdriver);
       result['iframe.contentWindow.navigator.plugins.length'] = safe(() => iframe.contentWindow?.navigator?.plugins?.length);
       document.body.removeChild(iframe);
@@ -562,6 +597,27 @@ function collectAPIPresence() {
     'IdleDeadline','SyncManager','AnimationTimeline',
     'ScriptProcessorNode','DOMStringList','NamedNodeMap',
     'NodeIterator','NodeList','ImageData','FileList',
+    // ── Mar 24 new from VV8 logs ──
+    'Float16Array','CSSMathMin','CSSMathInvert','CSSNumericValue',
+    'CSSLayerBlockRule','CSSPerspective','CSSSupportsRule',
+    'MediaSource','MediaSourceHandle','MediaElementAudioSourceNode',
+    'NavigationDestination','NavigationTransition','NavigationHistoryEntry',
+    'Navigation','NotRestoredReasonDetails','ReportingObserver',
+    'FeaturePolicy','RangeError','AbstractRange',
+    'RTCEncodedVideoFrame','RTCDataChannelEvent','RTCSctpTransport',
+    'RTCRtpTransceiver','RTCPeerConnectionIceErrorEvent',
+    'SVGFEFloodElement','SVGFEMergeElement','SVGFEBlendElement',
+    'SVGFESpotLightElement','SVGScriptElement','SVGAElement',
+    'SVGComponentTransferFunctionElement','SVGAnimatedTransformList',
+    'HTMLLabelElement','HTMLMarqueeElement','HTMLMetaElement',
+    'HTMLOptGroupElement','HTMLOptionsCollection',
+    'StorageEvent','MessageChannel','MessagePort',
+    'BackgroundFetchRegistration','WindowControlsOverlay',
+    'DOMStringMap','FileReader','Headers','Request',
+    'TextTrack','TextTrackList','MimeType','External',
+    'ViewTransition','ViewTransitionTypeSet',
+    'PushManager','AuthenticatorAssertionResponse',
+    'AuthenticatorAttestationResponse',
   ];
   const result = {};
   apis.forEach(name => {
@@ -582,6 +638,8 @@ function collectAPIPresence() {
     'fetchLater','length','onanimationiteration','onbeforeprint',
     'onclose','onmouseout','open','originAgentCluster',
     'releaseEvents','resizeBy','screenTop',
+    // Mar 24 new
+    'createImageBitmap','credentialless','onpointermove','orientation',
   ];
   winProps.forEach(name => {
     result['window.' + name] = safe(() => name in window);
@@ -637,6 +695,14 @@ function collectPrototypeProbes() {
     'offsetPosition', 'opacity', 'overflow', 'overflowAnchor', 'overflowWrap',
     'scale', 'sizeAdjust', 'src', 'touchAction', 'translate',
     'webkitBorderEndWidth', 'webkitBorderHorizontalSpacing',
+    // Mar 24 new
+    'anchorScope', 'baselineSource', 'borderBottomStyle', 'borderInlineEndWidth',
+    'borderInlineStart', 'bufferedRendering', 'columnHeight', 'contentVisibility',
+    'cursor', 'fallback', 'fontFamily', 'forcedColorAdjust', 'gap',
+    'gridRowEnd', 'gridRowStart', 'interestDelay', 'overscrollBehaviorBlock',
+    'positionAnchor', 'readingFlow', 'scrollPaddingInlineStart',
+    'scrollTimelineAxis', 'textEmphasisStyle', 'timelineTriggerActiveRange',
+    'webkitBorderBottomRightRadius', 'webkitTextEmphasisColor',
   ];
   const div = document.createElement('div');
   const cs = div.style;
@@ -669,6 +735,12 @@ function collectPrototypeProbes() {
     'lookupNamespaceURI', 'name', 'offsetLeft', 'offsetTop', 'offsetWidth',
     'referrerPolicy', 'removeAttributeNode', 'removeChild', 'replaceChild',
     'scrollTop', 'title', 'width', 'x',
+    // Mar 24 new
+    'CDATA_SECTION_NODE', 'DOCUMENT_POSITION_FOLLOWING', 'ELEMENT_NODE',
+    'NOTATION_NODE', 'alt', 'ariaNotify', 'cloneNode',
+    'getAttributeNode', 'getAttributeNodeNS', 'hidePopover',
+    'isDefaultNamespace', 'lookupPrefix', 'nonce', 'offsetHeight',
+    'removeAttributeNode', 'style', 'tabIndex',
   ];
   imgProps.forEach(p => {
     result['HTMLImageElement.' + p] = safe(() => p in img);
@@ -687,8 +759,9 @@ function collectPrototypeProbes() {
     'button', 'cancelable', 'metaKey', 'pageX', 'pageY',
     'preventDefault', 'shiftKey',
     // Mar 13 new
-    'altKey', 'bubbles', 'clientX', 'clientY', 'ctrlKey',
-    'initEvent', 'initMouseEvent',
+    'altKey', 'bubbles', 'clientX', 'clientY', 'composed', 'ctrlKey',
+    'detail', 'eventPhase', 'initEvent', 'initMouseEvent',
+    'stopImmediatePropagation', 'stopPropagation', 'which',
     // Always present
     'isTrusted', 'type',
   ];
